@@ -1,0 +1,19 @@
+[project]
+name = "sqlglot-maxcompute"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "azurechen97", email = "jhcax126@outlook.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "sqlglot>=29.0.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.entry-points."sqlglot.dialects"]
+maxcompute = "sqlglot_maxcompute.dialect:MaxCompute"
