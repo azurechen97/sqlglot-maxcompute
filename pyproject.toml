@@ -1,8 +1,9 @@
 [project]
 name = "sqlglot-maxcompute"
 version = "0.1.0"
-description = "Add your description here"
+description = "MaxCompute dialect plugin for SQLGlot"
 readme = "README.md"
+license = { text = "MIT" }
 authors = [
     { name = "azurechen97", email = "jhcax126@outlook.com" }
 ]
@@ -15,5 +16,10 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
 [project.entry-points."sqlglot.dialects"]
-maxcompute = "sqlglot_maxcompute.dialect:MaxCompute"
+maxcompute = "sqlglot_maxcompute.maxcompute:MaxCompute"
