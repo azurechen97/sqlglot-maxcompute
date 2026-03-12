@@ -2,52 +2,100 @@
 
 ## Part 1 — SQLGlot Custom Dialect Guide
 
-### Key source files to read first
+> For deeper background, read the official docs in `local/posts/`:
+> - `onboarding.md` — full architecture walkthrough (Tokenizer → Parser → Generator → Dialects)
+> - `ast_primer.md` — how AST nodes work, how to traverse and mutate them
 
-| File | What it teaches |
-|---|---|
-| `sqlglot/dialects/dialect.py` | Base `Dialect` class, all class-level property flags, helper builders (`build_formatted_time`, `build_timetostr_or_tochar`, `unit_to_str`, `rename_func`, etc.) |
-| `sqlglot/dialects/hive.py` | Our base class — read the full Tokenizer, Parser.FUNCTIONS, Generator.TRANSFORMS, and all `_sql` methods |
-| `sqlglot/dialects/spark.py` | Good reference for a Hive subclass that selectively overrides |
-| `sqlglot/dialects/bigquery.py` | Best reference for a comprehensive, well-tested dialect with many custom generators |
-| `sqlglot/expressions.py` | All `exp.*` AST node definitions — search for the node name to see its `arg_types` |
-| `sqlglot/tokens.py` | `TokenType` enum — for adding keywords in Tokenizer |
-| `sqlglot/helper.py` | `seq_get()` — safe positional arg extractor used in all FUNCTIONS lambdas |
+---
+
+### How transpilation works (the big picture)
+
+SQLGlot transpilation is a three-step pipeline:
+
+```
+SQL string  →[Tokenizer]→  token list  →[Parser]→  AST  →[Generator]→  SQL string
+```
+
+1. **Tokenizer** splits the raw string into typed tokens (`SELECT`, `b`, `FROM`, `=`, `1`, …).
+2. **Parser** reads those tokens and builds an **Abstract Syntax Tree (AST)** — a dialect-neutral tree of `exp.*` Python objects that captures the *meaning*, not the syntax.
+3. **Generator** walks the AST and emits SQL in the target dialect.
+
+Because the AST is dialect-neutral, transpiling from Hive to MaxCompute means:
+- Parse with the Hive Tokenizer + Parser → AST
+- Generate with the MaxCompute Generator → MaxCompute SQL
+
+**You only need to teach your dialect how to read (Parser) and how to write (Generator).**
+
+---
+
+### Understanding AST nodes
+
+Every node in the AST is a subclass of `exp.Expression`. Each class has an `arg_types` dict that declares its named children:
+
+```python
+# From sqlglot/expressions.py
+class TsOrDsAdd(Expression):
+    arg_types = {"this": True, "expression": True, "unit": False, "zone": False}
+    #             ↑ the date    ↑ the delta           ↑ e.g. "day"
+```
+
+The two most important children are always:
+- `this` — the primary child (access via `e.this`)
+- `expression` — the secondary child (access via `e.expression`)
+
+**Debugging trick**: when you're not sure what AST node a SQL fragment produces, parse it and `repr()` it:
+
+```python
+from sqlglot import parse_one
+repr(parse_one("SELECT CURRENT_TIMESTAMP()", dialect="hive"))
+# Select(expressions=[CurrentTimestamp()])
+```
+
+This tells you the exact node class to target in your Generator.
 
 ---
 
 ### Dialect anatomy
 
-```python
-class MaxCompute(Hive):
-    # ── 1. Class-level properties ──────────────────────────────────────────
-    # Behavioral flags inherited or overridden here.
-    # See: sqlglot/dialects/dialect.py → class Dialect (top of file, all flags)
+A dialect is a class with three inner classes. Since MaxCompute is based on Hive, we subclass `Hive` and only override what differs:
 
-    TIME_MAPPING = { "yyyy": "%Y", ... }   # dialect fmt → strftime
+```python
+from sqlglot.dialects.hive import Hive
+from sqlglot import exp
+from sqlglot.tokens import TokenType
+from sqlglot.helper import seq_get
+from sqlglot.dialects.dialect import unit_to_str
+
+class MaxCompute(Hive):
+    # Class-level: behavioral flags and format mappings
+    # Reference: sqlglot/dialects/dialect.py → class Dialect
+    TIME_MAPPING = {"yyyy": "%Y", "mm": "%m", ...}  # MaxCompute fmt → strftime
     DATE_FORMAT  = "'yyyy-mm-dd'"
     TIME_FORMAT  = "'yyyy-mm-dd hh:mi:ss'"
 
     class Tokenizer(Hive.Tokenizer):
-        # ── 2. Tokenizer ───────────────────────────────────────────────────
-        # Controls lexical analysis: what is a keyword, quote char, identifier char.
-        # See: sqlglot/dialects/hive.py → class Tokenizer
-        QUOTES    = ["'"]                          # which chars open string literals
-        KEYWORDS  = { **Hive.Tokenizer.KEYWORDS, "LIFECYCLE": TokenType.PROPERTY, ... }
+        # Teaches the lexer what counts as a string, identifier, or keyword.
+        # Reference: sqlglot/dialects/hive.py → Hive.Tokenizer
+        QUOTES   = ["'"]                    # MaxCompute: single quotes only
+        KEYWORDS = {
+            **Hive.Tokenizer.KEYWORDS,
+            "LIFECYCLE": TokenType.PROPERTY,  # new keyword not in Hive
+        }
 
     class Parser(Hive.Parser):
-        # ── 3. Parser ──────────────────────────────────────────────────────
-        # Maps function names (uppercase) → exp.* node constructors.
-        # See: sqlglot/dialects/hive.py → class Parser → FUNCTIONS
+        # Teaches the parser how to turn MaxCompute function calls into AST nodes.
+        # Reference: sqlglot/dialects/hive.py → Hive.Parser.FUNCTIONS
         FUNCTIONS = {
             **Hive.Parser.FUNCTIONS,
+            # "FUNCNAME": lambda args: exp.SomeNode(this=seq_get(args, 0), ...)
+            "GETDATE": lambda args: exp.CurrentTimestamp(),
             "DATEADD": lambda args: exp.TsOrDsAdd(
-                this=seq_get(args, 0),
-                expression=seq_get(args, 1),
-                unit=seq_get(args, 2),
+                this=seq_get(args, 0),       # 1st arg: date
+                expression=seq_get(args, 1), # 2nd arg: delta
+                unit=seq_get(args, 2),       # 3rd arg: unit string
             ),
         }
-        # For DDL properties (CREATE TABLE ... LIFECYCLE 30):
+        # For DDL properties like CREATE TABLE ... LIFECYCLE 30:
         PROPERTY_PARSERS = {
             **Hive.Parser.PROPERTY_PARSERS,
             "LIFECYCLE": lambda self: self.expression(
@@ -56,67 +104,127 @@ class MaxCompute(Hive):
         }
 
     class Generator(Hive.Generator):
-        # ── 4. Generator ───────────────────────────────────────────────────
-        # Maps exp.* node types → MaxCompute SQL strings.
-        # See: sqlglot/dialects/hive.py → class Generator → TRANSFORMS
-        TYPE_MAPPING = { **Hive.Generator.TYPE_MAPPING, exp.DataType.Type.DATETIME: "DATETIME" }
+        # Teaches the generator how to turn AST nodes back into MaxCompute SQL.
+        # Reference: sqlglot/dialects/hive.py → Hive.Generator.TRANSFORMS
+
+        # Map canonical type enum → MaxCompute type name string
+        TYPE_MAPPING = {
+            **Hive.Generator.TYPE_MAPPING,
+            exp.DataType.Type.DATETIME: "DATETIME",
+        }
+
+        # Map expression class → SQL string (best for one-liners)
         TRANSFORMS = {
             **Hive.Generator.TRANSFORMS,
-            exp.TsOrDsAdd: lambda self, e: self.func("DATEADD", e.this, e.expression, unit_to_str(e)),
+            exp.CurrentTimestamp: lambda self, e: "GETDATE()",
+            exp.TsOrDsAdd: lambda self, e: self.func(
+                "DATEADD", e.this, e.expression, unit_to_str(e)
+            ),
         }
+
+        # Control where DDL properties are placed in output
         PROPERTIES_LOCATION = {
             **Hive.Generator.PROPERTIES_LOCATION,
             exp.LifecycleProperty: exp.Properties.Location.POST_EXPRESSION,
         }
 
-        # For complex generation logic, define a method named {classname_lower}_sql:
+        # For multi-line generation logic, define a method: {classnamelower}_sql
+        # Note: if both a TRANSFORM entry AND an _sql method exist, TRANSFORM wins.
         def extract_sql(self, expression: exp.Extract) -> str:
+            # EXTRACT(YEAR FROM dt) → DATEPART(dt, 'year')
             unit = exp.Literal.string(expression.this.name)
             return self.func("DATEPART", expression.expression, unit)
 ```
 
-### Key patterns
+---
 
-**`self.func(name, *args)`** — generates `NAME(arg1, arg2, ...)`, handles None args gracefully.
-Reference: `sqlglot/generator.py` → `def func()`
+### Key helper functions
 
-**`unit_to_str(e)`** — extracts the unit from a date expression as a quoted string literal.
-Reference: `sqlglot/dialects/dialect.py` → `def unit_to_str()`
+These are imported from sqlglot internals and used throughout dialect implementations.
 
-**`seq_get(args, i)`** — safe `args[i]`, returns None if out of bounds.
-Reference: `sqlglot/helper.py` → `def seq_get()`
+| Helper | Where | What it does |
+|---|---|---|
+| `seq_get(args, i)` | `sqlglot/helper.py` | Safe `args[i]`, returns `None` if out of bounds. Use in every Parser lambda. |
+| `self.func(name, *args)` | `sqlglot/generator.py` | Generates `NAME(a, b, c)`, skipping `None` args. Use in every Generator lambda. |
+| `unit_to_str(e)` | `sqlglot/dialects/dialect.py` | Extracts the unit from a date expression as a quoted string, e.g. `'day'`. |
+| `rename_func(name)` | `sqlglot/dialects/dialect.py` | Shorthand TRANSFORM: renames a function keeping all args in order. |
+| `build_formatted_time(exp_cls, dialect)` | `sqlglot/dialects/dialect.py` | Parser builder: constructs a time-format expression and converts the format string using `TIME_MAPPING`. |
+| `build_timetostr_or_tochar` | `sqlglot/dialects/dialect.py` | Parser builder for `TO_CHAR` — picks `TimeToStr` or `ToChar` depending on the argument type. |
 
-**`rename_func(name)`** — shorthand for `lambda self, e: self.func(name, *e.args.values())`.
-Reference: `sqlglot/dialects/dialect.py` → `def rename_func()`
+---
 
-**`build_formatted_time(exp_class, dialect)`** — builds a time-formatting expression with format conversion.
-Reference: `sqlglot/dialects/dialect.py` → `def build_formatted_time()`
+### Two ways to implement a Generator mapping
 
-**`exp.DataType.Type`** — enum of all canonical type names.
-Reference: `sqlglot/expressions.py` → `class DataType`
+**Option A — TRANSFORMS dict** (preferred for simple cases):
+```python
+TRANSFORMS = {
+    **Hive.Generator.TRANSFORMS,
+    exp.Lower: lambda self, e: self.func("TOLOWER", e.this),
+}
+```
 
-### Testing pattern
+**Option B — `_sql` method** (use when logic is too complex for a one-liner):
+```python
+def groupconcat_sql(self, expression: exp.GroupConcat) -> str:
+    # WM_CONCAT reverses the arg order: separator comes first
+    sep = expression.args.get("separator") or exp.Literal.string(",")
+    return self.func("WM_CONCAT", sep, expression.this)
+```
+
+> **Important**: if both exist for the same expression type, the `TRANSFORMS` entry takes precedence over the `_sql` method. (See `onboarding.md` → Generator section.)
+
+---
+
+### How to find the right `exp.*` node for a function
+
+1. Parse an example in the closest dialect and `repr()` the result — fastest way.
+2. Search `sqlglot/expressions.py` for the class (e.g. `class TsOrDsAdd`) and read its `arg_types`.
+3. Search existing dialect files for the function name — see how other dialects map it.
+
+```python
+# Step 1: repr trick
+from sqlglot import parse_one
+repr(parse_one("SELECT DATE_ADD('2024-01-01', 3)", dialect="hive"))
+# → look for the node class name in the output
+```
+
+---
+
+### Reference implementations to read
+
+| File | Why read it |
+|---|---|
+| `sqlglot/dialects/hive.py` | Our base — everything MaxCompute inherits or overrides |
+| `sqlglot/dialects/spark.py` | A Hive subclass; shows the minimal-override pattern |
+| `sqlglot/dialects/bigquery.py` | Most thorough Generator; good reference for `_sql` methods and `TYPE_MAPPING` |
+| `sqlglot/dialects/dialect.py` | All shared helper builders and base `Dialect` class flags |
+| `sqlglot/expressions.py` | Every `exp.*` node with its `arg_types` |
+| `sqlglot/tokens.py` | `TokenType` enum — needed when adding Tokenizer keywords |
+
+---
+
+### Testing
 
 ```python
 import sqlglot
 
-# Transpile from another dialect into MaxCompute
+# Transpile test: another dialect → MaxCompute
 assert sqlglot.transpile(
     "SELECT CURRENT_TIMESTAMP()", read="hive", write="maxcompute"
 )[0] == "SELECT GETDATE()"
 
-# Parse MaxCompute SQL → check canonical AST node type
-ast = sqlglot.parse_one("SELECT DATEADD(dt, 1, 'day')", read="maxcompute")
-# navigate: ast.selects[0] should be exp.TsOrDsAdd
-
-# Round-trip: MaxCompute → MaxCompute
+# Round-trip: MaxCompute → MaxCompute (verify parser + generator are consistent)
 assert sqlglot.transpile(
     "SELECT GETDATE()", read="maxcompute", write="maxcompute"
 )[0] == "SELECT GETDATE()"
+
+# Parse test: check the AST node type directly
+ast = sqlglot.parse_one("SELECT DATEADD(dt, 1, 'day')", read="maxcompute")
+sel = ast.selects[0]
+assert isinstance(sel, sqlglot.exp.TsOrDsAdd)
 ```
 
-Hive's own tests are the best style reference:
-`sqlglot/tests/dialects/test_hive.py` (in the sqlglot repo, not this .venv)
+For test file style, look at `tests/dialects/test_hive.py` in the upstream sqlglot repo.
 
 ---
 
