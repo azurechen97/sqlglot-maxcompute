@@ -10,7 +10,7 @@ from sqlglot.dialects.dialect import (
     build_timetostr_or_tochar,
     unit_to_str,
 )
-from sqlglot.helper import is_type, seq_get
+from sqlglot.helper import seq_get
 from sqlglot.tokens import TokenType
 
 WEEKDAYS = [

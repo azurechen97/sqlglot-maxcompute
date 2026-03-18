@@ -84,7 +84,7 @@ class MaxCompute(Hive):
 
     class Parser(Hive.Parser):
         # Teaches the parser how to turn MaxCompute function calls into AST nodes.
-        # Reference: sqlglot/dialects/hive.py → Hive.Parser.FUNCTIONS
+        # Reference: sqlglot/parsers/hive.py → HiveParser.FUNCTIONS (local ref) / dialects/hive.py (installed 29.0.1)
         FUNCTIONS = {
             **Hive.Parser.FUNCTIONS,
             # "FUNCNAME": lambda args: exp.SomeNode(this=seq_get(args, 0), ...)
@@ -194,11 +194,12 @@ repr(parse_one("SELECT DATE_ADD('2024-01-01', 3)", dialect="hive"))
 
 | File | Why read it |
 |---|---|
-| `sqlglot/dialects/hive.py` | Our base — everything MaxCompute inherits or overrides |
+| `sqlglot/dialects/hive.py` | Our base — Generator and class definition (local ref: Parser moved to `parsers/hive.py`) |
+| `sqlglot/parsers/hive.py` | Hive's `FUNCTIONS` dict and parser methods (local ref only; installed 29.0.1 keeps these in `dialects/hive.py`) |
 | `sqlglot/dialects/spark.py` | A Hive subclass; shows the minimal-override pattern |
 | `sqlglot/dialects/bigquery.py` | Most thorough Generator; good reference for `_sql` methods and `TYPE_MAPPING` |
 | `sqlglot/dialects/dialect.py` | All shared helper builders and base `Dialect` class flags |
-| `sqlglot/expressions.py` | Every `exp.*` node with its `arg_types` |
+| `sqlglot/expressions/` | Every `exp.*` node — local ref split into modules (`temporal.py`, `aggregate.py`, `array.py`, etc.); installed 29.0.1 uses single `expressions.py` |
 | `sqlglot/tokens.py` | `TokenType` enum — needed when adding Tokenizer keywords |
 
 ---
@@ -424,8 +425,10 @@ For each category, write three test types:
 
 When you need to implement a Parser entry and aren't sure which `exp.*` node to use, or what its `arg_types` are:
 
-1. Search `sqlglot/expressions.py` for the class name (e.g. `class TsOrDsAdd`)
+1. Search `sqlglot/expressions/` for the class name (e.g. `class TsOrDsAdd`) — split into modules in local ref (`temporal.py`, `aggregate.py`, `array.py`, etc.); single `expressions.py` in installed 29.0.1
 2. Check `arg_types` dict — tells you what named args the node expects
 3. Check existing uses in `sqlglot/dialects/` — search for `exp.TsOrDsAdd` across dialect files
 
 For Generator, after choosing the node, search `Generator.TRANSFORMS` in `hive.py` to see if Hive already generates something for it — and whether you need to override.
+
+For Parser `FUNCTIONS`, in the local ref look in `sqlglot/parsers/hive.py → HiveParser.FUNCTIONS`; in installed 29.0.1 look in `sqlglot/dialects/hive.py → Hive.Parser.FUNCTIONS`.

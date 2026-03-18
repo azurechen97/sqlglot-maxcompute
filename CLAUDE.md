@@ -30,20 +30,21 @@ The entire dialect lives in `src/sqlglot_maxcompute/maxcompute.py`. The `MaxComp
 
 - **`Tokenizer`** — adds MaxCompute-specific keywords (e.g., `EXPORT`, `OPTION`) on top of Hive's keywords.
 - **`Parser`** — maps MaxCompute built-in function names to canonical `sqlglot.exp` expression nodes (e.g., `DATEADD` → `TsOrDsAdd`, `DATEDIFF` → `DateDiff`, `WM_CONCAT` → `GroupConcat`).
-- **`Generator`** — maps canonical expression nodes back to MaxCompute SQL syntax. Custom `_sql` methods handle function-level generation (e.g., `extract_sql`, `timetostr_sql`, `groupconcat_sql`).
+- **`Generator`** — will map canonical expression nodes back to MaxCompute SQL syntax via auto-discovered `<name>_sql()` methods or `TRANSFORMS` entries. Currently `pass`.
 
 The dialect is registered as a plugin in `pyproject.toml` under `[project.entry-points."sqlglot.dialects"]`, so after installation it is automatically discoverable by sqlglot as `"maxcompute"`.
 
 `local/` contains development scratch files and references — **not part of the package**:
 - `scratch.py` — keyword comparison scratch script
-- `sqlglot/` — full clone of the sqlglot repo for reference (expressions, dialects, generator internals)
+- `sqlglot/` — full clone of the sqlglot repo for reference (expressions, dialects, generator internals); `sqlglot/posts/` contains official guides (`onboarding.md` for architecture deep-dive, `ast_primer.md` for AST tutorial). Note: local clone is newer than installed (29.0.1) — dialect parsers moved to `parsers/`, expressions split into `expressions/` package
+- `maxcompute_doc/` — MaxCompute official function documentation (e.g., `date_func.md`, `func_comparison.md`)
 
 ## Implementation Status
 
 The dialect is partially implemented. Current state:
-- **Parser**: 13 functions mapped (`DATEADD`, `DATEDIFF`, `DATEPART`, `DATETRUNC`, `GETDATE`, `TO_CHAR`, `TOLOWER`, `TOUPPER`, `WM_CONCAT`, `FROM_JSON`, `GET_USER_ID`, `REGEXP_SUBSTR`, `SLICE`). Note: `_build_dateadd` helper is stubbed (`pass`) and needs completing.
-- **Generator**: Not yet implemented (`pass`).
-- **Tests**: None yet. Test file should go in `tests/`.
+- **Parser**: ~50 functions mapped across date/time, string, aggregate, array, and map categories.
+- **Generator**: Not yet implemented (`pass` — inherits Hive's generator).
+- **Tests**: `tests/test_maxcompute.py` covers all Parser mappings (parse assertions + cross-dialect transpilation).
 - **Reference**: Full implementation checklist is in `docs/superpowers/specs/2026-03-13-maxcompute-dialect-design.md`.
 
 ## Key sqlglot patterns
@@ -51,3 +52,20 @@ The dialect is partially implemented. Current state:
 When adding function mappings in `Parser.FUNCTIONS`, use `sqlglot.helper.seq_get` to safely extract positional arguments from the `args` list. Note that MaxCompute argument order sometimes differs from the canonical expression (e.g., `DATEDIFF(unit, start, end)` vs `DateDiff(this=end, expression=start, unit=unit)`).
 
 When adding generator transforms in `Generator.TRANSFORMS`, use `self.func(name, *args)` to produce correctly formatted SQL function calls.
+
+## Testing patterns
+
+Tests use a `Validator` base class (inline in `tests/test_maxcompute.py`) mirroring sqlglot's pattern:
+- `validate_all(sql, write={dialect: expected})` — cross-dialect transpilation assertions
+- `assertIsInstance(parse_one(sql, read="maxcompute"), exp.SomeClass)` — parse node assertions
+
+Before writing `validate_all` assertions, probe actual output first:
+```bash
+uv run python -c "from sqlglot import parse_one; e = parse_one('FUNC(...)', read='maxcompute'); print(e.sql('spark'))"
+```
+
+## Parser authoring rules
+
+- **Never use `exp.Anonymous`** — check `expressions.py` for a proper class first; use formula-based expressions as fallback.
+- **Inherit, don't re-implement** — omit functions from `Parser.FUNCTIONS` if MaxCompute and Hive have identical semantics.
+- **Type-dispatch builders** — `_build_dateadd` / `_build_datetrunc` dispatch to typed nodes via `is_type()`, with an untyped fallback.
