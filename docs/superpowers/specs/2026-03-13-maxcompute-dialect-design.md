@@ -241,7 +241,6 @@ Legend: **[P]** = Property · **[T]** = Tokenizer · **[Pa]** = Parser · **[G]*
 
 | # | Component | Item | Notes |
 |---|---|---|---|
-| 1 | [T] | `QUOTES = ["'"]` | Hive allows both `'` and `"`. MaxCompute: single quotes only for strings. Verify in tokenizer. |
 | 2 | [P] | `NORMALIZATION_STRATEGY` | Likely `CASE_INSENSITIVE` same as Hive — verify against MaxCompute docs |
 | 3 | [P] | `ALIAS_POST_TABLESAMPLE` | Hive sets `True`. Check if MaxCompute matches. |
 | 4 | [P] | `IDENTIFIERS_CAN_START_WITH_DIGIT` | Hive sets `True`. Verify MaxCompute allows this. |
@@ -270,7 +269,7 @@ For each, look up the canonical `exp.*` node in `sqlglot/expressions.py`.
 |---|---|---|---|---|---|
 | 9 | `DATEADD(date, delta, unit)` | date,delta,unit | `exp.TsOrDsAdd` | `DATE_ADD(date, n)` (day only, no unit) | Unit as 3rd arg |
 | 10 | `DATE_ADD(date, delta)` | date,delta | `exp.DateAdd` | same name | Already in Hive — check if inherited correctly |
-| 11 | `DATEDIFF(unit, date1, date2)` | **unit first!** | `exp.DateDiff` | `DATEDIFF(d1,d2)` — **no unit arg** | Arg order difference is critical |
+| 11 | `DATEDIFF(date1, date2, unit?)` | date1,date2,unit | `exp.DateDiff` | `DATEDIFF(d1,d2)` — **no unit arg** | Unit is optional 3rd arg (not 1st). Hive's entry must be overridden. |
 | 12 | `DATE_SUB(date, delta)` | date,delta | `exp.DateSub` | same name | Check inheritance |
 | 13 | `DATEPART(date, unit_str)` | date,unit | `exp.Extract` | `EXTRACT(unit FROM date)` | Unit is a string literal, not keyword |
 | 14 | `DATETRUNC(date, unit)` | date,unit | `exp.TimestampTrunc` | `TRUNC(date, unit)` | Different function name |
