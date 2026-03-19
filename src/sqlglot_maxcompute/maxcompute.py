@@ -13,6 +13,7 @@ from sqlglot.dialects.dialect import (
 from sqlglot.helper import seq_get
 from sqlglot.tokens import TokenType
 
+
 WEEKDAYS = [
     "monday",
     "tuesday",
@@ -83,6 +84,7 @@ class MaxCompute(Hive):
         KEYWORDS = {
             **Hive.Tokenizer.KEYWORDS,
             "EXPORT": TokenType.EXPORT,
+            "LIFECYCLE": TokenType.KEY,
             "OPTION": TokenType.OPTION,
         }
 
@@ -184,5 +186,32 @@ class MaxCompute(Hive):
             "SLICE": exp.ArraySlice.from_arg_list,
         }
 
+        PROPERTY_PARSERS = {
+            **Hive.Parser.PROPERTY_PARSERS,
+            # LIFECYCLE n — MaxCompute table retention in days. Stored as a generic
+            # exp.Property with a Var key so no custom expression class is needed and
+            # sqlglot's PROPERTIES_LOCATION contract is not broken.
+            "LIFECYCLE": lambda self: self.expression(
+                exp.Property(this=exp.var("LIFECYCLE"), value=self._parse_number())
+            ),
+        }
+
     class Generator(Hive.Generator):
-        pass
+        # exp.Property (generic) is POST_WITH in Hive (TBLPROPERTIES wrapper).
+        # MaxCompute uses bare `KEY value` syntax after the schema, so move it POST_SCHEMA.
+        PROPERTIES_LOCATION = {
+            **Hive.Generator.PROPERTIES_LOCATION,
+            exp.Property: exp.Properties.Location.POST_SCHEMA,
+        }
+
+        # Hive registers a TRANSFORMS entry for exp.Property that takes precedence over
+        # the property_sql method. Override it here so Var-keyed properties (e.g. LIFECYCLE)
+        # render as `KEY value` without quotes or `=`.
+        TRANSFORMS = {
+            **Hive.Generator.TRANSFORMS,
+            exp.Property: lambda self, e: (
+                f"{e.name} {self.sql(e, 'value')}"
+                if isinstance(e.this, exp.Var)
+                else Hive.Generator.TRANSFORMS[exp.Property](self, e)
+            ),
+        }

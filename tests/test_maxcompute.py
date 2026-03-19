@@ -440,5 +440,26 @@ class TestMaxCompute(Validator):
         self.assertIsInstance(self.parse_one("YEAR(dt)"), exp.Year)
 
 
+    # -------------------------------------------------------------------------
+    # DDL properties
+    # -------------------------------------------------------------------------
+
+    def test_lifecycle_property(self):
+        # Parse: LIFECYCLE clause produces an exp.Property with Var("LIFECYCLE") as key
+        expr = parse_one("CREATE TABLE t (id INT) LIFECYCLE 30", read="maxcompute")
+        props = expr.args["properties"].expressions
+        lifecycle = next((p for p in props if isinstance(p, exp.Property) and p.name == "LIFECYCLE"), None)
+        self.assertIsNotNone(lifecycle)
+        self.assertEqual(lifecycle.args["value"].name, "30")
+
+        # Round-trip: LIFECYCLE is preserved in MaxCompute output
+        self.validate_identity("CREATE TABLE t (id INT) LIFECYCLE 30")
+
+        # Other dialects: LIFECYCLE ends up in TBLPROPERTIES (not an error)
+        expr2 = parse_one("CREATE TABLE t (id INT) LIFECYCLE 30", read="maxcompute")
+        hive_out = expr2.sql("hive")
+        self.assertIn("LIFECYCLE", hive_out)
+
+
 if __name__ == "__main__":
     unittest.main()

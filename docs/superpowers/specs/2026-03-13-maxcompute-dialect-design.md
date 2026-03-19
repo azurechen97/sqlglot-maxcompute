@@ -1,5 +1,8 @@
 # MaxCompute Dialect Design
 
+> **sqlglot version**: 30.0.1 (installed). Local reference clone at `local/sqlglot/` is a newer development snapshot — structure differs (parsers split into `parsers/`, expressions split into `expressions/`). Installed 30.0.1 keeps the classic layout: `dialects/hive.py` contains both Parser and Generator, `expressions.py` is a single file.
+
+
 ## Part 1 — SQLGlot Custom Dialect Guide
 
 > For deeper background, read the official docs in `local/posts/`:
@@ -84,7 +87,7 @@ class MaxCompute(Hive):
 
     class Parser(Hive.Parser):
         # Teaches the parser how to turn MaxCompute function calls into AST nodes.
-        # Reference: sqlglot/parsers/hive.py → HiveParser.FUNCTIONS (local ref) / dialects/hive.py (installed 29.0.1)
+        # Reference: dialects/hive.py → Hive.Parser.FUNCTIONS (installed 30.0.1)
         FUNCTIONS = {
             **Hive.Parser.FUNCTIONS,
             # "FUNCNAME": lambda args: exp.SomeNode(this=seq_get(args, 0), ...)
@@ -96,10 +99,11 @@ class MaxCompute(Hive):
             ),
         }
         # For DDL properties like CREATE TABLE ... LIFECYCLE 30:
+        # Note: Parser.expression() takes a pre-built instance, not (cls, **kwargs).
         PROPERTY_PARSERS = {
             **Hive.Parser.PROPERTY_PARSERS,
             "LIFECYCLE": lambda self: self.expression(
-                exp.LifecycleProperty, this=self._parse_number()
+                LifecycleProperty(this=self._parse_number())
             ),
         }
 
@@ -194,12 +198,12 @@ repr(parse_one("SELECT DATE_ADD('2024-01-01', 3)", dialect="hive"))
 
 | File | Why read it |
 |---|---|
-| `sqlglot/dialects/hive.py` | Our base — Generator and class definition (local ref: Parser moved to `parsers/hive.py`) |
-| `sqlglot/parsers/hive.py` | Hive's `FUNCTIONS` dict and parser methods (local ref only; installed 29.0.1 keeps these in `dialects/hive.py`) |
+| `sqlglot/dialects/hive.py` | Our base — both Parser and Generator in installed 30.0.1; local ref splits Parser to `parsers/hive.py` |
+| `sqlglot/parsers/hive.py` | Hive's `FUNCTIONS` dict and parser methods — local ref only; installed 30.0.1 keeps these in `dialects/hive.py` |
 | `sqlglot/dialects/spark.py` | A Hive subclass; shows the minimal-override pattern |
 | `sqlglot/dialects/bigquery.py` | Most thorough Generator; good reference for `_sql` methods and `TYPE_MAPPING` |
 | `sqlglot/dialects/dialect.py` | All shared helper builders and base `Dialect` class flags |
-| `sqlglot/expressions/` | Every `exp.*` node — local ref split into modules (`temporal.py`, `aggregate.py`, `array.py`, etc.); installed 29.0.1 uses single `expressions.py` |
+| `sqlglot/expressions/` | Every `exp.*` node — local ref split into modules (`temporal.py`, `aggregate.py`, `array.py`, etc.); installed 30.0.1 uses single `expressions.py` |
 | `sqlglot/tokens.py` | `TokenType` enum — needed when adding Tokenizer keywords |
 
 ---
@@ -253,7 +257,7 @@ Legend: **[P]** = Property · **[T]** = Tokenizer · **[Pa]** = Parser · **[G]*
 
 | # | Component | Keyword | Notes |
 |---|---|---|---|
-| 6 | [T] | `LIFECYCLE` | Table property. Hive doesn't have it. Add with appropriate `TokenType`. |
+| 6 | [T] | `LIFECYCLE` | **Done.** Uses `TokenType.KEY` (no dedicated token type exists in sqlglot 30.0.1). |
 | 7 | [T] | `EXPORT` | Already in current impl. |
 | 8 | [T] | `OPTION` | Already in current impl. |
 
@@ -326,7 +330,7 @@ For each, look up the canonical `exp.*` node in `sqlglot/expressions.py`.
 
 | # | Item | Notes |
 |---|---|---|
-| 39 | `LIFECYCLE n` in `CREATE TABLE` | Needs `PROPERTY_PARSERS` entry producing `exp.LifecycleProperty`. Check `sqlglot/expressions.py` for `LifecycleProperty` definition — it may already exist. |
+| 39 | `LIFECYCLE n` in `CREATE TABLE` | **Done.** `LifecycleProperty` is a custom expression defined in `maxcompute.py` (not in sqlglot 30.0.1). `LIFECYCLE` tokenizes as `TokenType.KEY`. Parser lambda: `self.expression(LifecycleProperty(this=self._parse_number()))`. |
 
 ---
 
@@ -376,7 +380,7 @@ Check `sqlglot/dialects/hive.py → Generator.TYPE_MAPPING` for current Hive map
 
 | # | Item | Notes |
 |---|---|---|
-| 57 | `exp.LifecycleProperty` | Output `LIFECYCLE n`. Set `PROPERTIES_LOCATION` to `POST_EXPRESSION`. Reference: Hive's `alterset_sql` or BigQuery's custom property generators. |
+| 57 | `LifecycleProperty` | **Done.** `lifecycleproperty_sql` method outputs `LIFECYCLE <n>`. `PROPERTIES_LOCATION` set to `POST_SCHEMA` (after column list, where MaxCompute places it). |
 
 ---
 
@@ -425,10 +429,10 @@ For each category, write three test types:
 
 When you need to implement a Parser entry and aren't sure which `exp.*` node to use, or what its `arg_types` are:
 
-1. Search `sqlglot/expressions/` for the class name (e.g. `class TsOrDsAdd`) — split into modules in local ref (`temporal.py`, `aggregate.py`, `array.py`, etc.); single `expressions.py` in installed 29.0.1
+1. Search `sqlglot/expressions/` for the class name (e.g. `class TsOrDsAdd`) — split into modules in local ref (`temporal.py`, `aggregate.py`, `array.py`, etc.); single `expressions.py` in installed 30.0.1
 2. Check `arg_types` dict — tells you what named args the node expects
 3. Check existing uses in `sqlglot/dialects/` — search for `exp.TsOrDsAdd` across dialect files
 
 For Generator, after choosing the node, search `Generator.TRANSFORMS` in `hive.py` to see if Hive already generates something for it — and whether you need to override.
 
-For Parser `FUNCTIONS`, in the local ref look in `sqlglot/parsers/hive.py → HiveParser.FUNCTIONS`; in installed 29.0.1 look in `sqlglot/dialects/hive.py → Hive.Parser.FUNCTIONS`.
+For Parser `FUNCTIONS`, in the local ref look in `sqlglot/parsers/hive.py → HiveParser.FUNCTIONS`; in installed 30.0.1 look in `sqlglot/dialects/hive.py → Hive.Parser.FUNCTIONS`.

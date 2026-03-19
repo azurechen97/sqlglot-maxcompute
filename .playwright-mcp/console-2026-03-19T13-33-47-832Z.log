@@ -1,0 +1,10 @@
+[     726ms] [WARNING] [AES] 未监测到Aplus SDK @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/index.js:0
+[     843ms] [WARNING] The provided value '*/*' is not a valid enum value of type XMLHttpRequestResponseType. @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/vendor.js:7
+[     887ms] [WARNING] One of your code blocks includes unescaped HTML. This is a potentially serious security risk. @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/vendor.js:19
+[     887ms] [WARNING] https://github.com/highlightjs/highlight.js/wiki/security @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/vendor.js:19
+[     887ms] [WARNING] The element with unescaped HTML: @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/vendor.js:19
+[     887ms] [WARNING] JSHandle@node @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/vendor.js:19
+[     889ms] [WARNING] One of your code blocks includes unescaped HTML. This is a potentially serious security risk. @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/vendor.js:19
+[     889ms] [WARNING] https://github.com/highlightjs/highlight.js/wiki/security @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/vendor.js:19
+[     890ms] [WARNING] The element with unescaped HTML: @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/vendor.js:19
+[     890ms] [WARNING] JSHandle@node @ https://g.alicdn.com/aliyun-help/help-portal-fe/0.12.38/js/vendor.js:19

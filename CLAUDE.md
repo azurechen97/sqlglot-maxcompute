@@ -36,14 +36,15 @@ The dialect is registered as a plugin in `pyproject.toml` under `[project.entry-
 
 `local/` contains development scratch files and references — **not part of the package**:
 - `scratch.py` — keyword comparison scratch script
-- `sqlglot/` — full clone of the sqlglot repo for reference (expressions, dialects, generator internals); `sqlglot/posts/` contains official guides (`onboarding.md` for architecture deep-dive, `ast_primer.md` for AST tutorial). Note: local clone is newer than installed (29.0.1) — dialect parsers moved to `parsers/`, expressions split into `expressions/` package
+- `sqlglot/` — full clone of the sqlglot repo for reference (expressions, dialects, generator internals); `sqlglot/posts/` contains official guides (`onboarding.md` for architecture deep-dive, `ast_primer.md` for AST tutorial). Note: local clone is newer than installed (30.0.1) — dialect parsers moved to `parsers/`, expressions split into `expressions/` package
+- `ydb-sqlglot-plugin/` — YDB dialect plugin, used as reference for how a well-behaved plugin is structured
 - `maxcompute_doc/` — MaxCompute official function documentation (e.g., `date_func.md`, `func_comparison.md`)
 
 ## Implementation Status
 
 The dialect is partially implemented. Current state:
 - **Parser**: ~50 functions mapped across date/time, string, aggregate, array, and map categories.
-- **Generator**: Not yet implemented (`pass` — inherits Hive's generator).
+- **Generator**: Partially implemented — `TRANSFORMS`, `PROPERTIES_LOCATION`, and `property_sql` override for LIFECYCLE; inherits Hive's generator for everything else.
 - **Tests**: `tests/test_maxcompute.py` covers all Parser mappings (parse assertions + cross-dialect transpilation).
 - **Reference**: Full implementation checklist is in `docs/superpowers/specs/2026-03-13-maxcompute-dialect-design.md`.
 
@@ -63,6 +64,20 @@ Before writing `validate_all` assertions, probe actual output first:
 ```bash
 uv run python -c "from sqlglot import parse_one; e = parse_one('FUNC(...)', read='maxcompute'); print(e.sql('spark'))"
 ```
+
+## Plugin contract — do not break sqlglot internals
+
+This is a **dialect plugin**, not a fork. We must stay within sqlglot's public extension points:
+
+- **No custom `exp.Property` subclasses** — all `Property` subclasses must live in sqlglot's `expressions/properties.py` and be registered in the base `Generator.PROPERTIES_LOCATION`. Defining a custom subclass in this plugin breaks every other dialect's `locate_properties` (which uses a raw dict lookup with no fallback). Use generic `exp.Property(this=exp.var("KEY"), value=...)` instead and override `TRANSFORMS[exp.Property]` and `PROPERTIES_LOCATION[exp.Property]` in `MaxCompute.Generator` to handle the formatting.
+- **No monkey-patching sqlglot internals** — do not patch `Generator.locate_properties`, `Generator.TRANSFORMS`, or any other base class method/dict outside the `MaxCompute` class hierarchy.
+- **No new `exp.*` expression classes** — all AST node types must be existing sqlglot classes. Check `expressions.py` before considering anything custom.
+
+## Scraping MaxCompute docs
+
+Alibaba help pages have a `复制为 MD 格式` button that copies the page as markdown to clipboard.
+Workflow: `browser_navigate` → `browser_snapshot` (save to file, grep for button ref) → `browser_click` → `browser_evaluate(() => navigator.clipboard.readText())` → `Write` to `local/maxcompute_doc/`.
+Note: snapshots exceed token limits; grep the saved file for the button ref instead of reading it directly.
 
 ## Parser authoring rules
 
