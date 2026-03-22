@@ -194,7 +194,16 @@ class MaxCompute(Hive):
             "LIFECYCLE": lambda self: self.expression(
                 exp.Property(this=exp.var("LIFECYCLE"), value=self._parse_number())
             ),
+            "RANGE": lambda self: self._parse_range_clustered_by(),
         }
+
+        def _parse_range_clustered_by(self) -> exp.ClusteredByProperty:
+            if not self._match_text_seq("CLUSTERED"):
+                self._retreat(self._index - 1)
+                return self._parse_dict_range(this="RANGE")
+            prop = self._parse_clustered_by()
+            prop.args["range"] = True
+            return prop
 
     class Generator(Hive.Generator):
         PROPERTIES_LOCATION = {
@@ -204,6 +213,10 @@ class MaxCompute(Hive):
         TRANSFORMS = {
             **Hive.Generator.TRANSFORMS,
         }
+
+        def clusteredbyproperty_sql(self, expression: exp.ClusteredByProperty) -> str:
+            sql = super().clusteredbyproperty_sql(expression)
+            return f"RANGE {sql}" if expression.args.get("range") else sql
 
         def properties_sql(self, expression: exp.Properties) -> str:
             # Var-keyed exp.Property instances (e.g. LIFECYCLE 30) render as bare

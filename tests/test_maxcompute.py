@@ -468,6 +468,31 @@ class TestMaxCompute(Validator):
         hive_out = expr2.sql("hive")
         self.assertIn("LIFECYCLE", hive_out)
 
+    def test_range_clustered_by(self):
+        # Parse: produces ClusteredByProperty with range flag
+        expr = parse_one(
+            "CREATE TABLE t (a INT) RANGE CLUSTERED BY (a) SORTED BY (a) INTO 1024 BUCKETS",
+            read="maxcompute",
+        )
+        prop = expr.args["properties"].expressions[0]
+        self.assertIsInstance(prop, exp.ClusteredByProperty)
+        self.assertTrue(prop.args.get("range"))
+
+        # Round-trip: full syntax
+        self.validate_identity(
+            "CREATE TABLE t (a INT) RANGE CLUSTERED BY (a) SORTED BY (a) INTO 1024 BUCKETS"
+        )
+
+        # Round-trip: without SORTED BY
+        self.validate_identity(
+            "CREATE TABLE t (a INT) RANGE CLUSTERED BY (a) INTO 512 BUCKETS"
+        )
+
+        # Hash CLUSTERED BY still works (inherited from Hive)
+        self.validate_identity(
+            "CREATE TABLE t (a INT) CLUSTERED BY (a) SORTED BY (a) INTO 1024 BUCKETS"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
