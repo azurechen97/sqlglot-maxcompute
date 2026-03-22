@@ -455,6 +455,14 @@ class TestMaxCompute(Validator):
         # Round-trip: LIFECYCLE is preserved in MaxCompute output
         self.validate_identity("CREATE TABLE t (id INT) LIFECYCLE 30")
 
+        # TBLPROPERTIES renders with wrapper
+        self.validate_identity("CREATE TABLE t (id INT) TBLPROPERTIES ('transactional'='true')")
+
+        # TBLPROPERTIES + LIFECYCLE together
+        self.validate_identity(
+            "CREATE TABLE t (id INT) TBLPROPERTIES ('transactional'='true') LIFECYCLE 7"
+        )
+
         # Other dialects: LIFECYCLE ends up in TBLPROPERTIES (not an error)
         expr2 = parse_one("CREATE TABLE t (id INT) LIFECYCLE 30", read="maxcompute")
         hive_out = expr2.sql("hive")

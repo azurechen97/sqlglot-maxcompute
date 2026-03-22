@@ -197,21 +197,30 @@ class MaxCompute(Hive):
         }
 
     class Generator(Hive.Generator):
-        # exp.Property (generic) is POST_WITH in Hive (TBLPROPERTIES wrapper).
-        # MaxCompute uses bare `KEY value` syntax after the schema, so move it POST_SCHEMA.
         PROPERTIES_LOCATION = {
             **Hive.Generator.PROPERTIES_LOCATION,
-            exp.Property: exp.Properties.Location.POST_SCHEMA,
         }
 
-        # Hive registers a TRANSFORMS entry for exp.Property that takes precedence over
-        # the property_sql method. Override it here so Var-keyed properties (e.g. LIFECYCLE)
-        # render as `KEY value` without quotes or `=`.
         TRANSFORMS = {
             **Hive.Generator.TRANSFORMS,
-            exp.Property: lambda self, e: (
-                f"{e.name} {self.sql(e, 'value')}"
-                if isinstance(e.this, exp.Var)
-                else Hive.Generator.TRANSFORMS[exp.Property](self, e)
-            ),
         }
+
+        def properties_sql(self, expression: exp.Properties) -> str:
+            # Var-keyed exp.Property instances (e.g. LIFECYCLE 30) render as bare
+            # KEY value after the schema. String-keyed ones stay in TBLPROPERTIES.
+            var_keyed = [
+                p
+                for p in expression.expressions
+                if isinstance(p, exp.Property) and isinstance(p.this, exp.Var)
+            ]
+            other = [p for p in expression.expressions if p not in var_keyed]
+
+            other_node = exp.Properties(expressions=other)
+            other_node.parent = expression.parent
+            base_sql = super().properties_sql(other_node) if other else ""
+
+            bare_sql = " ".join(f"{p.name} {self.sql(p, 'value')}" for p in var_keyed)
+
+            if base_sql and bare_sql:
+                return f"{base_sql} {bare_sql}"
+            return base_sql or bare_sql
