@@ -241,10 +241,6 @@ class MaxCompute(Hive):
             exp.DType.DATETIME: "DATETIME",
         }
 
-        PROPERTIES_LOCATION = {
-            **Hive.Generator.PROPERTIES_LOCATION,
-        }
-
         TRANSFORMS = {
             **Hive.Generator.TRANSFORMS,
             exp.Create: preprocess(
@@ -272,9 +268,10 @@ class MaxCompute(Hive):
             unit = unit_to_str(expression) if expression.args.get("unit") else "'DAY'"
             delta = expression.expression
             if isinstance(expression, exp.DateSub):
-                # DateSub has a positive magnitude; negate it for DATEADD
+                # DateSub magnitude is positive; negate it so DATEADD subtracts.
+                # Some dialects (e.g. BigQuery) store the magnitude as a string
+                # literal — normalize to a number first so we emit -3 not -'3'.
                 if isinstance(delta, exp.Literal) and delta.is_string:
-                    # Convert string literal to number literal first
                     delta = exp.Literal.number(delta.this)
                 delta = exp.Neg(this=delta)
             return self.func("DATEADD", expression.this, delta, unit)
@@ -283,6 +280,7 @@ class MaxCompute(Hive):
             return self.func("DATETRUNC", expression.this, unit_to_str(expression))
 
         def extract_sql(self, expression: exp.Extract) -> str:
+            # Named extract_sql (public) so sqlglot's auto-dispatch picks it up for exp.Extract nodes.
             unit = expression.this
             return self.func("DATEPART", expression.expression, exp.Literal.string(unit.name))
 
