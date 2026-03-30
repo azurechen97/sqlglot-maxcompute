@@ -240,6 +240,12 @@ class TestMaxCompute(Validator):
             },
         )
 
+        # TO_DATE: parses without Hive's TimeStrToTime wrapping (format stored as-is)
+        expr = self.parse_one("TO_DATE('2024-01-01', 'yyyy-mm-dd')")
+        self.assertIsInstance(expr, exp.TsOrDsToDate)
+        # Format should be stored as Oracle style, not strftime
+        self.assertEqual(expr.args.get("format").this, "yyyy-mm-dd")
+
         # TO_CHAR (untyped arg → ToChar)
         self.assertIsInstance(self.parse_one("TO_CHAR(dt, 'yyyy-mm-dd')"), exp.ToChar)
 
@@ -326,6 +332,17 @@ class TestMaxCompute(Validator):
             "APPROX_DISTINCT(x)",
             write={"spark": "APPROX_COUNT_DISTINCT(x)", "duckdb": "APPROX_COUNT_DISTINCT(x)"},
         )
+
+        # Statistical aggregates
+        self.assertIsInstance(self.parse_one("STDDEV_SAMP(x)"), exp.StddevSamp)
+        self.assertIsInstance(self.parse_one("COVAR_POP(x, y)"), exp.CovarPop)
+        self.assertIsInstance(self.parse_one("COVAR_SAMP(x, y)"), exp.CovarSamp)
+        self.assertIsInstance(self.parse_one("CORR(x, y)"), exp.Corr)
+        self.assertIsInstance(self.parse_one("MEDIAN(x)"), exp.Median)
+        self.assertIsInstance(self.parse_one("PERCENTILE_APPROX(x, 0.5)"), exp.ApproxQuantile)
+        self.assertIsInstance(self.parse_one("BITWISE_AND_AGG(x)"), exp.BitwiseAndAgg)
+        self.assertIsInstance(self.parse_one("BITWISE_OR_AGG(x)"), exp.BitwiseOrAgg)
+        self.assertIsInstance(self.parse_one("BITWISE_XOR_AGG(x)"), exp.BitwiseXorAgg)
 
     # -------------------------------------------------------------------------
     # Array functions

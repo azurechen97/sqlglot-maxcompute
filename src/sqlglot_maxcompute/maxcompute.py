@@ -119,6 +119,10 @@ class MaxCompute(Hive):
             "DATE_FORMAT": lambda args: exp.TimeToStr(
                 this=seq_get(args, 0), format=seq_get(args, 1)
             ),
+            # Hive override: MaxCompute TO_DATE accepts date types directly (no TimeStrToTime wrap)
+            "TO_DATE": lambda args: exp.TsOrDsToDate(
+                this=seq_get(args, 0), format=seq_get(args, 1)
+            ),
             # Hive override: MaxCompute FROM_UNIXTIME takes 1 arg and returns DATETIME, not STRING
             "FROM_UNIXTIME": lambda args: exp.UnixToTime(this=seq_get(args, 0)),
             # Date arithmetic
@@ -184,6 +188,15 @@ class MaxCompute(Hive):
             "ARG_MIN": exp.ArgMin.from_arg_list,
             "ANY_VALUE": exp.AnyValue.from_arg_list,
             "APPROX_DISTINCT": exp.ApproxDistinct.from_arg_list,
+            "STDDEV_SAMP": exp.StddevSamp.from_arg_list,
+            "COVAR_POP": exp.CovarPop.from_arg_list,
+            "COVAR_SAMP": exp.CovarSamp.from_arg_list,
+            "CORR": exp.Corr.from_arg_list,
+            "MEDIAN": exp.Median.from_arg_list,
+            "PERCENTILE_APPROX": exp.ApproxQuantile.from_arg_list,
+            "BITWISE_AND_AGG": exp.BitwiseAndAgg.from_arg_list,
+            "BITWISE_OR_AGG": exp.BitwiseOrAgg.from_arg_list,
+            "BITWISE_XOR_AGG": exp.BitwiseXorAgg.from_arg_list,
             # Array functions
             "ALL_MATCH": exp.ArrayAll.from_arg_list,
             "ANY_MATCH": exp.ArrayAny.from_arg_list,
