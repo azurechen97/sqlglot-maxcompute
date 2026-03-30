@@ -663,6 +663,24 @@ class TestMaxCompute(Validator):
         # TO_MILLIS round-trip
         self.validate_identity("SELECT TO_MILLIS(dt)")
 
+    def test_type_mappings(self):
+        # VARCHAR → STRING in MaxCompute
+        self.validate_all(
+            "CREATE TABLE t (s VARCHAR(100))",
+            read={"spark": "CREATE TABLE t (s VARCHAR(100))"},
+            write={"maxcompute": "CREATE TABLE t (s STRING)"},
+        )
+
+        # CHAR → STRING
+        self.validate_all(
+            "CREATE TABLE t (s CHAR(10))",
+            read={"spark": "CREATE TABLE t (s CHAR(10))"},
+            write={"maxcompute": "CREATE TABLE t (s STRING)"},
+        )
+
+        # DATETIME preserved (already works, regression check)
+        self.validate_identity("CREATE TABLE t (dt DATETIME)")
+
 
 if __name__ == "__main__":
     unittest.main()

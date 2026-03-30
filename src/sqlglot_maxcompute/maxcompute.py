@@ -240,6 +240,8 @@ class MaxCompute(Hive):
         TYPE_MAPPING = {
             **Hive.Generator.TYPE_MAPPING,
             exp.DType.DATETIME: "DATETIME",
+            exp.DType.VARCHAR: "STRING",
+            exp.DType.CHAR: "STRING",
         }
 
         TRANSFORMS = {
@@ -316,6 +318,12 @@ class MaxCompute(Hive):
         def clusteredbyproperty_sql(self, expression: exp.ClusteredByProperty) -> str:
             sql = super().clusteredbyproperty_sql(expression)
             return f"RANGE {sql}" if expression.args.get("range") else sql
+
+        def datatype_sql(self, expression: exp.DataType) -> str:
+            # VARCHAR and CHAR map to STRING in MaxCompute, with no length parameters
+            if expression.this in (exp.DType.VARCHAR, exp.DType.CHAR):
+                return self.TYPE_MAPPING.get(expression.this, super().datatype_sql(expression))
+            return super().datatype_sql(expression)
 
         def properties_sql(self, expression: exp.Properties) -> str:
             # Var-keyed exp.Property instances (e.g. LIFECYCLE 30) render as bare
