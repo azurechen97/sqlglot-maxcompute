@@ -678,6 +678,13 @@ class TestMaxCompute(Validator):
         # TO_MILLIS round-trip
         self.validate_identity("SELECT TO_MILLIS(dt)")
 
+    def test_tochar_roundtrip(self):
+        # TO_CHAR round-trip (untyped column → ToChar node)
+        self.validate_identity("SELECT TO_CHAR(dt, 'yyyy-mm-dd')")
+
+        # DATE_FORMAT round-trip (preserved as-is)
+        self.validate_identity("SELECT DATE_FORMAT(dt, 'yyyy-mm-dd')")
+
     def test_type_mappings(self):
         # VARCHAR → STRING in MaxCompute
         self.validate_all(
@@ -690,6 +697,13 @@ class TestMaxCompute(Validator):
         self.validate_all(
             "CREATE TABLE t (s CHAR(10))",
             read={"spark": "CREATE TABLE t (s CHAR(10))"},
+            write={"maxcompute": "CREATE TABLE t (s STRING)"},
+        )
+
+        # TEXT → STRING
+        self.validate_all(
+            "CREATE TABLE t (s TEXT)",
+            read={"spark": "CREATE TABLE t (s TEXT)"},
             write={"maxcompute": "CREATE TABLE t (s STRING)"},
         )
 

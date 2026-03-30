@@ -246,6 +246,7 @@ class MaxCompute(Hive):
             exp.DType.DATETIME: "DATETIME",
             exp.DType.VARCHAR: "STRING",
             exp.DType.CHAR: "STRING",
+            exp.DType.TEXT: "STRING",
         }
 
         TRANSFORMS = {
@@ -314,6 +315,9 @@ class MaxCompute(Hive):
         def groupconcat_sql(self, expression: exp.GroupConcat) -> str:
             sep = expression.args.get("separator") or exp.Literal.string(",")
             return self.func("WM_CONCAT", sep, expression.this)
+
+        def tochar_sql(self, expression: exp.ToChar) -> str:
+            return self.func("TO_CHAR", expression.this, expression.args.get("format"))
 
         def extract_sql(self, expression: exp.Extract) -> str:
             # Named extract_sql (public) so sqlglot's auto-dispatch picks it up for exp.Extract nodes.
