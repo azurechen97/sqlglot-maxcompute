@@ -12,6 +12,24 @@ from sqlglot.dialects.dialect import (
 )
 from sqlglot.helper import seq_get
 from sqlglot.tokens import TokenType
+from sqlglot.transforms import (
+    move_schema_columns_to_partitioned_by,
+    preprocess,
+    remove_unique_constraints,
+    ctas_with_tmp_tables_to_create_tmp_view,
+)
+
+
+_AUTO_PARTITION_TYPES = (exp.DateTrunc, exp.TimestampTrunc, exp.DatetimeTrunc, exp.Alias)
+
+
+def _move_schema_columns_to_partitioned_by(expression: exp.Expr) -> exp.Expr:
+    """Like the Hive transform, but skip AUTO PARTITIONED BY (where this is a DateTrunc/Alias)."""
+    assert isinstance(expression, exp.Create)
+    prop = expression.find(exp.PartitionedByProperty)
+    if prop and isinstance(prop.this, _AUTO_PARTITION_TYPES):
+        return expression
+    return move_schema_columns_to_partitioned_by(expression)
 
 
 WEEKDAYS = [
@@ -195,7 +213,19 @@ class MaxCompute(Hive):
                 exp.Property(this=exp.var("LIFECYCLE"), value=self._parse_number())
             ),
             "RANGE": lambda self: self._parse_range_clustered_by(),
+            "AUTO": lambda self: self._parse_auto_partition(),
         }
+
+        def _parse_auto_partition(self) -> exp.PartitionedByProperty | exp.AutoRefreshProperty | None:
+            if self._match(TokenType.PARTITION_BY):
+                self._match(TokenType.L_PAREN)
+                expr = self._parse_conjunction()
+                if self._match(TokenType.ALIAS):
+                    expr = exp.Alias(this=expr, alias=self._parse_id_var())
+                self._match(TokenType.R_PAREN)
+                return exp.PartitionedByProperty(this=expr)
+            # Fall through to base AUTO REFRESH handling
+            return self._parse_auto_property()
 
         def _parse_range_clustered_by(self) -> exp.ClusteredByProperty:
             if not self._match_text_seq("CLUSTERED"):
@@ -206,13 +236,39 @@ class MaxCompute(Hive):
             return prop
 
     class Generator(Hive.Generator):
+        TYPE_MAPPING = {
+            **Hive.Generator.TYPE_MAPPING,
+            exp.DType.DATETIME: "DATETIME",
+        }
+
         PROPERTIES_LOCATION = {
             **Hive.Generator.PROPERTIES_LOCATION,
         }
 
         TRANSFORMS = {
             **Hive.Generator.TRANSFORMS,
+            exp.Create: preprocess(
+                [
+                    remove_unique_constraints,
+                    ctas_with_tmp_tables_to_create_tmp_view,
+                    _move_schema_columns_to_partitioned_by,
+                ]
+            ),
+            exp.PartitionedByProperty: lambda self, e: self._partitioned_by_sql(e),
         }
+
+        def _partitioned_by_sql(self, expression: exp.PartitionedByProperty) -> str:
+            inner = expression.this
+            if isinstance(inner, _AUTO_PARTITION_TYPES):
+                alias_sql = ""
+                if isinstance(inner, exp.Alias):
+                    alias_sql = f" AS {inner.alias}"
+                    inner = inner.this
+                unit = inner.args.get("unit")
+                unit_str = unit.name.lower() if unit else ""
+                trunc_sql = self.func("TRUNC_TIME", inner.this, exp.Literal.string(unit_str))
+                return f"AUTO PARTITIONED BY ({trunc_sql}{alias_sql})"
+            return f"PARTITIONED BY {self.sql(expression, 'this')}"
 
         def clusteredbyproperty_sql(self, expression: exp.ClusteredByProperty) -> str:
             sql = super().clusteredbyproperty_sql(expression)

@@ -494,5 +494,52 @@ class TestMaxCompute(Validator):
         )
 
 
+    def test_auto_partitioned_by(self):
+        # Parse: produces PartitionedByProperty with DateTrunc child
+        expr = parse_one(
+            "CREATE TABLE t (a INT, dt DATETIME) AUTO PARTITIONED BY (TRUNC_TIME(dt, 'month'))",
+            read="maxcompute",
+        )
+        prop = next(
+            p
+            for p in expr.args["properties"].expressions
+            if isinstance(p, exp.PartitionedByProperty)
+        )
+        self.assertIsInstance(prop.this, (exp.DateTrunc, exp.TimestampTrunc, exp.DatetimeTrunc))
+
+        # Round-trip: without AS
+        self.validate_identity(
+            "CREATE TABLE t (a INT, dt DATETIME) AUTO PARTITIONED BY (TRUNC_TIME(dt, 'month'))"
+        )
+
+        # Round-trip: with AS alias
+        self.validate_identity(
+            "CREATE TABLE t (a INT, dt DATETIME) AUTO PARTITIONED BY (TRUNC_TIME(dt, 'month') AS pt)"
+        )
+
+        # Regular PARTITIONED BY still works (inherited from Hive)
+        self.validate_identity(
+            "CREATE TABLE t (a INT) PARTITIONED BY (dt STRING)"
+        )
+
+
+    def test_combined_properties(self):
+        # LIFECYCLE + CLUSTERED BY
+        self.validate_identity(
+            "CREATE TABLE t (a INT) CLUSTERED BY (a) SORTED BY (a) INTO 64 BUCKETS LIFECYCLE 30"
+        )
+
+        # TBLPROPERTIES + LIFECYCLE + PARTITIONED BY
+        self.validate_identity(
+            "CREATE TABLE t (a INT) PARTITIONED BY (dt STRING) "
+            "TBLPROPERTIES ('transactional'='true') LIFECYCLE 7"
+        )
+
+        # RANGE CLUSTERED BY + LIFECYCLE
+        self.validate_identity(
+            "CREATE TABLE t (a INT) RANGE CLUSTERED BY (a) SORTED BY (a) INTO 1024 BUCKETS LIFECYCLE 30"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
