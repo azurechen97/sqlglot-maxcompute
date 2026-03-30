@@ -681,6 +681,32 @@ class TestMaxCompute(Validator):
         # DATETIME preserved (already works, regression check)
         self.validate_identity("CREATE TABLE t (dt DATETIME)")
 
+    def test_additional_parser_functions(self):
+        # Array functions with sqlglot equivalents
+        self.assertIsInstance(self.parse_one("ARRAY_INTERSECT(arr1, arr2)"), exp.ArrayIntersect)
+        self.validate_all(
+            "ARRAY_INTERSECT(arr1, arr2)",
+            write={"spark": "ARRAY_INTERSECT(arr1, arr2)"},
+        )
+
+        self.assertIsInstance(self.parse_one("ARRAY_POSITION(arr, 1)"), exp.ArrayPosition)
+        self.validate_all(
+            "ARRAY_POSITION(arr, 1)",
+            write={"spark": "ARRAY_POSITION(arr, 1)"},
+        )
+
+        self.assertIsInstance(self.parse_one("ARRAY_REMOVE(arr, 1)"), exp.ArrayRemove)
+        self.validate_all(
+            "ARRAY_REMOVE(arr, 1)",
+            write={"spark": "ARRAY_REMOVE(arr, 1)"},
+        )
+
+        self.assertIsInstance(self.parse_one("ARRAY_CONTAINS(arr, 1)"), exp.ArrayContains)
+        self.validate_all(
+            "ARRAY_CONTAINS(arr, 1)",
+            write={"spark": "ARRAY_CONTAINS(arr, 1)"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

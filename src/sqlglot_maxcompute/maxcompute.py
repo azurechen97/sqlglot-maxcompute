@@ -195,6 +195,10 @@ class MaxCompute(Hive):
             "ARRAY_MIN": exp.ArrayMin.from_arg_list,
             "ARRAYS_OVERLAP": exp.ArrayOverlaps.from_arg_list,
             "ARRAYS_ZIP": lambda args: exp.ArraysZip(expressions=args),
+            "ARRAY_INTERSECT": exp.ArrayIntersect.from_arg_list,
+            "ARRAY_POSITION": exp.ArrayPosition.from_arg_list,
+            "ARRAY_REMOVE": exp.ArrayRemove.from_arg_list,
+            "ARRAY_CONTAINS": exp.ArrayContains.from_arg_list,
             # Map functions
             "MAP_CONCAT": exp.MapCat.from_arg_list,
             "MAP_FROM_ENTRIES": exp.MapFromEntries.from_arg_list,
