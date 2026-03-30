@@ -19,7 +19,12 @@ class Validator(unittest.TestCase):
     def validate_all(
         self, sql: str, read: dict | None = None, write: dict | None = None
     ) -> exp.Expression:
-        expr = self.parse_one(sql)
+        # If read is provided, use the first dialect's SQL; otherwise use sql as-is
+        if read:
+            dialect, sql_to_read = next(iter(read.items()))
+            expr = parse_one(sql_to_read, read=dialect)
+        else:
+            expr = self.parse_one(sql)
         for dialect, expected in (write or {}).items():
             with self.subTest(f"{sql!r} -> {dialect}"):
                 self.assertEqual(
@@ -555,6 +560,13 @@ class TestMaxCompute(Validator):
             "SELECT DATE_ADD(dt, 1)",
             read={"spark": "SELECT DATE_ADD(dt, 1)"},
             write={"maxcompute": "SELECT DATEADD(dt, 1, 'DAY')"},
+        )
+
+        # Cross-dialect: BigQuery DATE_SUB → MaxCompute DATEADD with negated delta
+        self.validate_all(
+            "SELECT DATE_SUB(dt, INTERVAL 3 DAY)",
+            read={"bigquery": "SELECT DATE_SUB(dt, INTERVAL 3 DAY)"},
+            write={"maxcompute": "SELECT DATEADD(dt, -3, 'DAY')"},
         )
 
     def test_datetrunc_roundtrip(self):

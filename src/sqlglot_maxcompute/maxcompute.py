@@ -268,9 +268,16 @@ class MaxCompute(Hive):
             exp.CurrentDatetime: lambda self, e: "NOW()",
         }
 
-        def _dateadd_sql(self, expression: exp.TsOrDsAdd | exp.DateAdd | exp.TimestampAdd | exp.DatetimeAdd) -> str:
+        def _dateadd_sql(self, expression: exp.TsOrDsAdd | exp.DateAdd | exp.DateSub | exp.TimestampAdd | exp.DatetimeAdd) -> str:
             unit = unit_to_str(expression) if expression.args.get("unit") else "'DAY'"
-            return self.func("DATEADD", expression.this, expression.expression, unit)
+            delta = expression.expression
+            if isinstance(expression, exp.DateSub):
+                # DateSub has a positive magnitude; negate it for DATEADD
+                if isinstance(delta, exp.Literal) and delta.is_string:
+                    # Convert string literal to number literal first
+                    delta = exp.Literal.number(delta.this)
+                delta = exp.Neg(this=delta)
+            return self.func("DATEADD", expression.this, delta, unit)
 
         def _datetrunc_sql(self, expression: exp.DateTrunc | exp.TimestampTrunc | exp.DatetimeTrunc) -> str:
             return self.func("DATETRUNC", expression.this, unit_to_str(expression))
