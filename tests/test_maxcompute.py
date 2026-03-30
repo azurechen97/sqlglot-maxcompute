@@ -540,6 +540,60 @@ class TestMaxCompute(Validator):
             "CREATE TABLE t (a INT) RANGE CLUSTERED BY (a) SORTED BY (a) INTO 1024 BUCKETS LIFECYCLE 30"
         )
 
+    # -------------------------------------------------------------------------
+    # Date/time round-trip tests (Generator transforms)
+    # -------------------------------------------------------------------------
+
+    def test_dateadd_roundtrip(self):
+        # DATEADD round-trips with unit preserved
+        self.validate_identity("SELECT DATEADD(dt, 1, 'DAY')")
+        self.validate_identity("SELECT DATEADD(dt, 3, 'MONTH')")
+        self.validate_identity("SELECT DATEADD(dt, 1, 'YEAR')")
+
+        # Cross-dialect: Spark DateAdd → MaxCompute DATEADD
+        self.validate_all(
+            "SELECT DATE_ADD(dt, 1)",
+            read={"spark": "SELECT DATE_ADD(dt, 1)"},
+            write={"maxcompute": "SELECT DATEADD(dt, 1, 'DAY')"},
+        )
+
+    def test_datetrunc_roundtrip(self):
+        # DATETRUNC round-trips with MaxCompute arg order: DATETRUNC(dt, 'UNIT')
+        self.validate_identity("SELECT DATETRUNC(dt, 'YEAR')")
+        self.validate_identity("SELECT DATETRUNC(dt, 'MONTH')")
+
+        # Cross-dialect: DuckDB DATE_TRUNC → MaxCompute DATETRUNC
+        self.validate_all(
+            "SELECT DATE_TRUNC('YEAR', dt)",
+            read={"duckdb": "SELECT DATE_TRUNC('YEAR', dt)"},
+            write={"maxcompute": "SELECT DATETRUNC(dt, 'YEAR')"},
+        )
+
+    def test_datepart_roundtrip(self):
+        # DATEPART round-trips: DATEPART(dt, 'UNIT')
+        self.validate_identity("SELECT DATEPART(dt, 'YEAR')")
+        self.validate_identity("SELECT DATEPART(dt, 'MONTH')")
+
+        # Cross-dialect: EXTRACT → MaxCompute DATEPART
+        self.validate_all(
+            "SELECT EXTRACT(YEAR FROM dt)",
+            read={"spark": "SELECT EXTRACT(YEAR FROM dt)"},
+            write={"maxcompute": "SELECT DATEPART(dt, 'YEAR')"},
+        )
+
+    def test_getdate_roundtrip(self):
+        self.validate_identity("SELECT GETDATE()")
+
+        # Cross-dialect: CURRENT_TIMESTAMP → GETDATE
+        self.validate_all(
+            "SELECT CURRENT_TIMESTAMP()",
+            read={"spark": "SELECT CURRENT_TIMESTAMP()"},
+            write={"maxcompute": "SELECT GETDATE()"},
+        )
+
+        # NOW → NOW
+        self.validate_identity("SELECT NOW()")
+
 
 if __name__ == "__main__":
     unittest.main()

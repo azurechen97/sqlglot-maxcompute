@@ -255,7 +255,29 @@ class MaxCompute(Hive):
                 ]
             ),
             exp.PartitionedByProperty: lambda self, e: self._partitioned_by_sql(e),
+            # Date/time transforms
+            exp.TsOrDsAdd: lambda self, e: self._dateadd_sql(e),
+            exp.DateAdd: lambda self, e: self._dateadd_sql(e),
+            exp.TimestampAdd: lambda self, e: self._dateadd_sql(e),
+            exp.DatetimeAdd: lambda self, e: self._dateadd_sql(e),
+            exp.DateSub: lambda self, e: self._dateadd_sql(e),
+            exp.DateTrunc: lambda self, e: self._datetrunc_sql(e),
+            exp.TimestampTrunc: lambda self, e: self._datetrunc_sql(e),
+            exp.DatetimeTrunc: lambda self, e: self._datetrunc_sql(e),
+            exp.CurrentTimestamp: lambda self, e: "GETDATE()",
+            exp.CurrentDatetime: lambda self, e: "NOW()",
         }
+
+        def _dateadd_sql(self, expression: exp.TsOrDsAdd | exp.DateAdd | exp.TimestampAdd | exp.DatetimeAdd) -> str:
+            unit = unit_to_str(expression) if expression.args.get("unit") else "'DAY'"
+            return self.func("DATEADD", expression.this, expression.expression, unit)
+
+        def _datetrunc_sql(self, expression: exp.DateTrunc | exp.TimestampTrunc | exp.DatetimeTrunc) -> str:
+            return self.func("DATETRUNC", expression.this, unit_to_str(expression))
+
+        def extract_sql(self, expression: exp.Extract) -> str:
+            unit = expression.this
+            return self.func("DATEPART", expression.expression, exp.Literal.string(unit.name))
 
         def _partitioned_by_sql(self, expression: exp.PartitionedByProperty) -> str:
             inner = expression.this
