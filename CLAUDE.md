@@ -65,6 +65,10 @@ Before writing `validate_all` assertions, probe actual output first:
 uv run python -c "from sqlglot import parse_one; e = parse_one('FUNC(...)', read='maxcompute'); print(e.sql('spark'))"
 ```
 
+## Debugging with probe scripts
+
+For multi-step debugging (AST inspection, tracing transforms, etc.), write a temporary script to `local/probe.py` and run it with `uv run python local/probe.py`. The `local/` directory is gitignored, so probe scripts won't pollute the repo. Delete when done.
+
 ## Plugin contract — do not break sqlglot internals
 
 This is a **dialect plugin**, not a fork. We must stay within sqlglot's public extension points:
