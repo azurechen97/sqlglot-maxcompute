@@ -8,6 +8,7 @@ from sqlglot.dialects.hive import Hive
 from sqlglot.dialects.dialect import (
     build_formatted_time,
     build_timetostr_or_tochar,
+    rename_func,
     unit_to_str,
 )
 from sqlglot.helper import seq_get
@@ -262,6 +263,17 @@ class MaxCompute(Hive):
             exp.DatetimeTrunc: lambda self, e: self._datetrunc_sql(e),
             exp.CurrentTimestamp: lambda self, e: "GETDATE()",
             exp.CurrentDatetime: lambda self, e: "NOW()",
+            # String transforms
+            exp.Lower: rename_func("TOLOWER"),
+            exp.Upper: rename_func("TOUPPER"),
+            # JSON / misc
+            exp.ParseJSON: rename_func("FROM_JSON"),
+            exp.CurrentUser: lambda self, e: "GET_USER_ID()",
+            exp.UnixMillis: rename_func("TO_MILLIS"),
+            # Aggregate
+            exp.ApproxDistinct: rename_func("APPROX_DISTINCT"),
+            exp.ArgMax: lambda self, e: self.func("ARG_MAX", e.this, e.expression),
+            exp.ArgMin: lambda self, e: self.func("ARG_MIN", e.this, e.expression),
         }
 
         def _dateadd_sql(self, expression: exp.TsOrDsAdd | exp.DateAdd | exp.DateSub | exp.TimestampAdd | exp.DatetimeAdd) -> str:
@@ -278,6 +290,9 @@ class MaxCompute(Hive):
 
         def _datetrunc_sql(self, expression: exp.DateTrunc | exp.TimestampTrunc | exp.DatetimeTrunc) -> str:
             return self.func("DATETRUNC", expression.this, unit_to_str(expression))
+
+        def groupconcat_sql(self, expression: exp.GroupConcat) -> str:
+            return self.func("WM_CONCAT", expression.args.get("separator"), expression.this)
 
         def extract_sql(self, expression: exp.Extract) -> str:
             # Named extract_sql (public) so sqlglot's auto-dispatch picks it up for exp.Extract nodes.
