@@ -707,6 +707,35 @@ class TestMaxCompute(Validator):
             write={"spark": "ARRAY_CONTAINS(arr, 1)"},
         )
 
+    # -------------------------------------------------------------------------
+    # Comprehensive round-trip integration test
+    # -------------------------------------------------------------------------
+
+    def test_full_roundtrip(self):
+        """Comprehensive round-trip: parse as maxcompute, generate as maxcompute."""
+        statements = [
+            "SELECT DATEADD(dt, 1, 'DAY')",
+            "SELECT DATETRUNC(dt, 'MONTH')",
+            "SELECT DATEPART(dt, 'YEAR')",
+            "SELECT GETDATE()",
+            "SELECT NOW()",
+            "SELECT TOLOWER(s)",
+            "SELECT TOUPPER(s)",
+            "SELECT WM_CONCAT(',', col)",
+            "SELECT FROM_JSON(s, 'schema')",
+            "SELECT GET_USER_ID()",
+            "SELECT TO_MILLIS(dt)",
+            "SELECT APPROX_DISTINCT(x)",
+            "SELECT ARG_MAX(x, y)",
+            "SELECT ARG_MIN(x, y)",
+            "SELECT DATEDIFF(dt1, dt2)",
+            "SELECT DATE_FORMAT(dt, 'yyyy-mm-dd')",
+            "SELECT FROM_UNIXTIME(1234567890)",
+        ]
+        for sql in statements:
+            with self.subTest(sql):
+                self.validate_identity(sql)
+
 
 if __name__ == "__main__":
     unittest.main()
