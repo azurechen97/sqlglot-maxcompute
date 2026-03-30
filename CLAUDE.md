@@ -42,10 +42,10 @@ The dialect is registered as a plugin in `pyproject.toml` under `[project.entry-
 
 ## Implementation Status
 
-The dialect is partially implemented. Current state:
-- **Parser**: ~50 functions mapped across date/time, string, aggregate, array, and map categories.
-- **Generator**: Partially implemented — `TRANSFORMS`, `PROPERTIES_LOCATION`, and `property_sql` override for LIFECYCLE; inherits Hive's generator for everything else.
-- **Tests**: `tests/test_maxcompute.py` covers all Parser mappings (parse assertions + cross-dialect transpilation).
+The dialect is largely complete. Current state:
+- **Parser**: ~65 functions mapped across date/time, string, aggregate, array, and map categories.
+- **Generator**: `TRANSFORMS` entries + named `_sql` methods for all major expression types; inherits Hive for the rest.
+- **Tests**: `tests/test_maxcompute.py` covers Parser (parse + cross-dialect) and Generator (round-trip + cross-dialect).
 - **Reference**: Full implementation checklist is in `docs/superpowers/specs/2026-03-13-maxcompute-dialect-design.md`.
 
 ## Key sqlglot patterns
@@ -67,7 +67,9 @@ uv run python -c "from sqlglot import parse_one; e = parse_one('FUNC(...)', read
 
 ## Debugging with probe scripts
 
-For multi-step debugging (AST inspection, tracing transforms, etc.), write a temporary script to `local/probe.py` and run it with `uv run python local/probe.py`. The `local/` directory is gitignored, so probe scripts won't pollute the repo. Delete when done.
+For multi-step debugging (AST inspection, tracing transforms, etc.), write a temporary script to `local/probe.py` and run it with `uv run python local/probe.py`. The `local/` directory is gitignored, so probe scripts won't pollute the repo. **Always delete when done** — subagents consistently forget to clean up.
+
+When instructing subagents to debug, explicitly include: "write probe scripts to `local/probe.py`, run with `uv run python local/probe.py`, delete when done."
 
 ## Plugin contract — do not break sqlglot internals
 
@@ -88,3 +90,11 @@ Note: snapshots exceed token limits; grep the saved file for the button ref inst
 - **Never use `exp.Anonymous`** — check `expressions.py` for a proper class first; use formula-based expressions as fallback.
 - **Inherit, don't re-implement** — omit functions from `Parser.FUNCTIONS` if MaxCompute and Hive have identical semantics.
 - **Type-dispatch builders** — `_build_dateadd` / `_build_datetrunc` dispatch to typed nodes via `is_type()`, with an untyped fallback.
+
+## Generator authoring rules
+
+- **`self.func` drops `None` args silently** — guard optional args before passing to avoid emitting invalid SQL (e.g. `groupconcat_sql` defaults `separator` to `','`).
+- **`unit_to_str` on `WeekStart` returns the raw name, not a string literal** — reconstruct as `exp.Literal.string(f"week({day})")` manually.
+- **Named `_sql` methods vs TRANSFORMS** — use a named method when the base class already defines one (e.g. `extract_sql`, `groupconcat_sql`); both work but the method is cleaner and avoids surprise overrides.
+- **Don't add empty `PROPERTIES_LOCATION = {**Hive.Generator.PROPERTIES_LOCATION}`** — pure boilerplate; only add the dict when you have new entries to include.
+- **DateSub string-literal delta (BigQuery quirk)** — BigQuery's `DATE_SUB` stores the magnitude as a string literal; normalize before negating: `exp.Literal.number(delta.this)` so you emit `-3` not `-'3'`.
