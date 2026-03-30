@@ -606,6 +606,63 @@ class TestMaxCompute(Validator):
         # NOW → NOW
         self.validate_identity("SELECT NOW()")
 
+    def test_string_roundtrip(self):
+        self.validate_identity("SELECT TOLOWER(s)")
+        self.validate_identity("SELECT TOUPPER(s)")
+
+        # Cross-dialect: LOWER → TOLOWER
+        self.validate_all(
+            "SELECT LOWER(s)",
+            read={"spark": "SELECT LOWER(s)"},
+            write={"maxcompute": "SELECT TOLOWER(s)"},
+        )
+
+        self.validate_all(
+            "SELECT UPPER(s)",
+            read={"spark": "SELECT UPPER(s)"},
+            write={"maxcompute": "SELECT TOUPPER(s)"},
+        )
+
+    def test_aggregate_roundtrip(self):
+        # WM_CONCAT round-trip
+        self.validate_identity("SELECT WM_CONCAT(',', col)")
+
+        # ARG_MAX / ARG_MIN round-trip
+        self.validate_identity("SELECT ARG_MAX(x, y)")
+        self.validate_identity("SELECT ARG_MIN(x, y)")
+
+        # APPROX_DISTINCT round-trip
+        self.validate_identity("SELECT APPROX_DISTINCT(x)")
+
+        # Cross-dialect: MAX_BY → ARG_MAX, MIN_BY → ARG_MIN
+        self.validate_all(
+            "SELECT MAX_BY(x, y)",
+            read={"spark": "SELECT MAX_BY(x, y)"},
+            write={"maxcompute": "SELECT ARG_MAX(x, y)"},
+        )
+        self.validate_all(
+            "SELECT MIN_BY(x, y)",
+            read={"spark": "SELECT MIN_BY(x, y)"},
+            write={"maxcompute": "SELECT ARG_MIN(x, y)"},
+        )
+
+    def test_misc_roundtrip(self):
+        # FROM_JSON round-trip
+        self.validate_identity("SELECT FROM_JSON(s, 'schema')")
+
+        # Cross-dialect: PARSE_JSON → FROM_JSON
+        self.validate_all(
+            "SELECT PARSE_JSON(s)",
+            read={"spark": "SELECT PARSE_JSON(s)"},
+            write={"maxcompute": "SELECT FROM_JSON(s)"},
+        )
+
+        # GET_USER_ID round-trip
+        self.validate_identity("SELECT GET_USER_ID()")
+
+        # TO_MILLIS round-trip
+        self.validate_identity("SELECT TO_MILLIS(dt)")
+
 
 if __name__ == "__main__":
     unittest.main()
