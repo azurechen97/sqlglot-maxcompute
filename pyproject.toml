@@ -7,9 +7,9 @@ license = { text = "MIT" }
 authors = [
     { name = "azurechen97", email = "jhcax126@outlook.com" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.9"
 dependencies = [
-    "sqlglot>=29.0.1",
+    "sqlglot>=29.0.0",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -31,9 +31,11 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "ipykernel>=7.2.0",
-    "pytest>=9.0.2",
+    "pytest>=7.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [project.entry-points."sqlglot.dialects"]
 maxcompute = "sqlglot_maxcompute.maxcompute:MaxCompute"
