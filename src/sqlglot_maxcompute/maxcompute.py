@@ -264,6 +264,7 @@ class MaxCompute(Hive):
             exp.TimestampAdd: lambda self, e: self._dateadd_sql(e),
             exp.DatetimeAdd: lambda self, e: self._dateadd_sql(e),
             exp.DateSub: lambda self, e: self._dateadd_sql(e),
+            exp.DateDiff: lambda self, e: self._datediff_sql(e),
             exp.DateTrunc: lambda self, e: self._datetrunc_sql(e),
             exp.TimestampTrunc: lambda self, e: self._datetrunc_sql(e),
             exp.DatetimeTrunc: lambda self, e: self._datetrunc_sql(e),
@@ -294,8 +295,21 @@ class MaxCompute(Hive):
                 delta = exp.Neg(this=delta)
             return self.func("DATEADD", expression.this, delta, unit)
 
+        def _datediff_sql(self, expression: exp.DateDiff) -> str:
+            unit = unit_to_str(expression) if expression.args.get("unit") else None
+            return self.func("DATEDIFF", expression.this, expression.expression, unit)
+
         def _datetrunc_sql(self, expression: exp.DateTrunc | exp.TimestampTrunc | exp.DatetimeTrunc) -> str:
-            return self.func("DATETRUNC", expression.this, unit_to_str(expression))
+            unit = expression.args.get("unit")
+            # WeekStart units must be emitted as 'week(day)' string literals.
+            # unit_to_str returns the raw node name which would produce DATETRUNC(dt, WEEK(MONDAY))
+            # — invalid MaxCompute SQL. Reconstruct the canonical 'week(day)' form instead.
+            if isinstance(unit, exp.WeekStart):
+                day = unit.this.name.lower() if unit.args.get("this") else "monday"
+                unit_sql = exp.Literal.string(f"week({day})")
+            else:
+                unit_sql = unit_to_str(expression)
+            return self.func("DATETRUNC", expression.this, unit_sql)
 
         def groupconcat_sql(self, expression: exp.GroupConcat) -> str:
             sep = expression.args.get("separator") or exp.Literal.string(",")

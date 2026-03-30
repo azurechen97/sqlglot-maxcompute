@@ -549,6 +549,14 @@ class TestMaxCompute(Validator):
     # Date/time round-trip tests (Generator transforms)
     # -------------------------------------------------------------------------
 
+    def test_datediff_roundtrip(self):
+        # DATEDIFF round-trips without unit (default day diff)
+        self.validate_identity("SELECT DATEDIFF(dt1, dt2)")
+
+        # DATEDIFF with explicit unit round-trips natively (not via MONTHS_BETWEEN)
+        self.validate_identity("SELECT DATEDIFF(dt1, dt2, 'MONTH')")
+        self.validate_identity("SELECT DATEDIFF(dt1, dt2, 'YEAR')")
+
     def test_dateadd_roundtrip(self):
         # DATEADD round-trips with unit preserved
         self.validate_identity("SELECT DATEADD(dt, 1, 'DAY')")
@@ -573,6 +581,13 @@ class TestMaxCompute(Validator):
         # DATETRUNC round-trips with MaxCompute arg order: DATETRUNC(dt, 'UNIT')
         self.validate_identity("SELECT DATETRUNC(dt, 'YEAR')")
         self.validate_identity("SELECT DATETRUNC(dt, 'MONTH')")
+
+        # Week unit: 'week' normalizes to 'week(monday)' on round-trip (both mean the same)
+        self.validate_all(
+            "SELECT DATETRUNC(dt, 'week')",
+            write={"maxcompute": "SELECT DATETRUNC(dt, 'week(monday)')"},
+        )
+        self.validate_identity("SELECT DATETRUNC(dt, 'week(monday)')")
 
         # Cross-dialect: DuckDB DATE_TRUNC → MaxCompute DATETRUNC
         self.validate_all(
