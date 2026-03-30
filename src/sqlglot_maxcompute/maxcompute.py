@@ -150,6 +150,9 @@ class MaxCompute(Hive):
             "SECOND": exp.Second.from_arg_list,
             "QUARTER": exp.Quarter.from_arg_list,
             "WEEKDAY": lambda args: exp.paren(exp.DayOfWeek(this=seq_get(args, 0)) + 5, copy=False) % 7,
+            # MAX_BY / MIN_BY are Spark/Trino names for the same semantics
+            "MAX_BY": exp.ArgMax.from_arg_list,
+            "MIN_BY": exp.ArgMin.from_arg_list,
             "WEEKOFYEAR": exp.WeekOfYear.from_arg_list,
             # Last/next day
             "LAST_DAY": exp.LastDay.from_arg_list,
@@ -331,6 +334,21 @@ class MaxCompute(Hive):
 
         def tochar_sql(self, expression: exp.ToChar) -> str:
             return self.func("TO_CHAR", expression.this, expression.args.get("format"))
+
+        def mod_sql(self, expression: exp.Mod) -> str:
+            # Reverse the WEEKDAY parser transform: (DAYOFWEEK(x) + 5) % 7 → WEEKDAY(x)
+            rhs = expression.expression
+            lhs = expression.this
+            if (
+                isinstance(rhs, exp.Literal) and rhs.this == "7"
+                and isinstance(lhs, exp.Paren)
+                and isinstance(lhs.this, exp.Add)
+                and isinstance(lhs.this.this, exp.DayOfWeek)
+                and isinstance(lhs.this.expression, exp.Literal)
+                and lhs.this.expression.this == "5"
+            ):
+                return self.func("WEEKDAY", lhs.this.this.this)
+            return super().mod_sql(expression)
 
         def extract_sql(self, expression: exp.Extract) -> str:
             # Named extract_sql (public) so sqlglot's auto-dispatch picks it up for exp.Extract nodes.

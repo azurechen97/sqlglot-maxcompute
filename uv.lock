@@ -131,7 +131,7 @@ wheels = [
 
 [[package]]
 name = "sqlglot-maxcompute"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "sqlglot" },
@@ -144,7 +144,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "sqlglot", specifier = ">=29.0.0" }]
+requires-dist = [{ name = "sqlglot", specifier = ">=29.0.0,<31" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=7.0" }]

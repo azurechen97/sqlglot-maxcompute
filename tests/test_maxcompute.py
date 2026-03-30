@@ -98,7 +98,7 @@ class TestMaxCompute(Validator):
             },
         )
 
-        # WEEKDAY → (DAYOFWEEK(dt) + 5) % 7
+        # WEEKDAY → (DAYOFWEEK(dt) + 5) % 7 in other dialects, but round-trips as WEEKDAY in MaxCompute
         expr = self.parse_one("WEEKDAY(dt)")
         self.assertIsInstance(expr, exp.Mod)
         self.validate_all(
@@ -106,6 +106,7 @@ class TestMaxCompute(Validator):
             write={
                 "spark": "(DAYOFWEEK(dt) + 5) % 7",
                 "duckdb": "(DAYOFWEEK(dt) + 5) % 7",
+                "maxcompute": "WEEKDAY(dt)",
             },
         )
 
@@ -666,7 +667,7 @@ class TestMaxCompute(Validator):
         # APPROX_DISTINCT round-trip
         self.validate_identity("SELECT APPROX_DISTINCT(x)")
 
-        # Cross-dialect: MAX_BY → ARG_MAX, MIN_BY → ARG_MIN
+        # Cross-dialect: MAX_BY → ARG_MAX, MIN_BY → ARG_MIN (read from Spark)
         self.validate_all(
             "SELECT MAX_BY(x, y)",
             read={"spark": "SELECT MAX_BY(x, y)"},
@@ -675,6 +676,16 @@ class TestMaxCompute(Validator):
         self.validate_all(
             "SELECT MIN_BY(x, y)",
             read={"spark": "SELECT MIN_BY(x, y)"},
+            write={"maxcompute": "SELECT ARG_MIN(x, y)"},
+        )
+
+        # Read MaxCompute MAX_BY/MIN_BY directly (aliases in MaxCompute parser)
+        self.validate_all(
+            "SELECT MAX_BY(x, y)",
+            write={"maxcompute": "SELECT ARG_MAX(x, y)"},
+        )
+        self.validate_all(
+            "SELECT MIN_BY(x, y)",
             write={"maxcompute": "SELECT ARG_MIN(x, y)"},
         )
 
