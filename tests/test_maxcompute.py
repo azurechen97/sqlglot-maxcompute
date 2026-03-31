@@ -827,6 +827,14 @@ class TestMaxCompute(Validator):
             write={"maxcompute": "SELECT INSTR(s, 'sub')"},
         )
 
+        # SUBSTR: MaxCompute uses SUBSTR not SUBSTRING
+        self.validate_identity("SELECT SUBSTR(s, 1, 3)")
+        self.validate_all(
+            "SELECT SUBSTRING(s, 1, 3)",
+            read={"spark": "SELECT SUBSTRING(s, 1, 3)"},
+            write={"maxcompute": "SELECT SUBSTR(s, 1, 3)"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

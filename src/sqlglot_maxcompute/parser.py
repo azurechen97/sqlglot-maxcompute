@@ -133,6 +133,8 @@ class MaxComputeParser(Hive.Parser):
         "TOUPPER": exp.Upper.from_arg_list,
         "REGEXP_COUNT": exp.RegexpCount.from_arg_list,
         "SPLIT_PART": exp.SplitPart.from_arg_list,
+        # SUBSTR is the preferred MaxCompute alias for SUBSTRING
+        "SUBSTR": exp.Substring.from_arg_list,
         # Aggregate
         "WM_CONCAT": lambda args: exp.GroupConcat(
             this=seq_get(args, 1), separator=seq_get(args, 0)

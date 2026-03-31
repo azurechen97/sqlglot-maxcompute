@@ -115,6 +115,9 @@ class MaxComputeGenerator(Hive.Generator):
     def tochar_sql(self, expression: exp.ToChar) -> str:
         return self.func("TO_CHAR", expression.this, expression.args.get("format"))
 
+    def substring_sql(self, expression: exp.Substring) -> str:
+        return self.func("SUBSTR", expression.this, expression.args.get("start"), expression.args.get("length"))
+
     def extract_sql(self, expression: exp.Extract) -> str:
         unit = expression.this
         return self.func("DATEPART", expression.expression, exp.Literal.string(unit.name))
