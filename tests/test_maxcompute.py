@@ -794,5 +794,31 @@ class TestMaxCompute(Validator):
                 self.validate_identity(sql)
 
 
+    def test_generator_correctness_fixes(self):
+        # SPACE: MaxCompute has native SPACE(), not REPEAT(' ', n)
+        self.validate_identity("SELECT SPACE(5)")
+        self.validate_all(
+            "SELECT SPACE(5)",
+            read={"hive": "SELECT SPACE(5)"},
+            write={"maxcompute": "SELECT SPACE(5)"},
+        )
+
+        # VAR_POP: MaxCompute uses VAR_POP not VARIANCE_POP
+        self.validate_identity("SELECT VAR_POP(x)")
+        self.validate_all(
+            "SELECT VAR_POP(x)",
+            read={"spark": "SELECT VAR_POP(x)"},
+            write={"maxcompute": "SELECT VAR_POP(x)"},
+        )
+
+        # VAR_SAMP: MaxCompute uses VAR_SAMP not VARIANCE
+        self.validate_identity("SELECT VAR_SAMP(x)")
+        self.validate_all(
+            "SELECT VARIANCE(x)",
+            read={"spark": "SELECT VARIANCE(x)"},
+            write={"maxcompute": "SELECT VAR_SAMP(x)"},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -67,6 +67,10 @@ class MaxComputeGenerator(Hive.Generator):
         exp.ApproxDistinct: rename_func("APPROX_DISTINCT"),
         exp.ArgMax: lambda self, e: self.func("ARG_MAX", e.this, e.expression),
         exp.ArgMin: lambda self, e: self.func("ARG_MIN", e.this, e.expression),
+        # Statistical aggregate fixes (Hive emits wrong names)
+        exp.Space: rename_func("SPACE"),
+        exp.VariancePop: rename_func("VAR_POP"),
+        exp.Variance: rename_func("VAR_SAMP"),
     }
 
     def _dateadd_sql(
