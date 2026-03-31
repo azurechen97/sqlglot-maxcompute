@@ -874,5 +874,49 @@ class TestMaxCompute(Validator):
         )
 
 
+    def test_inherited_aggregate_functions(self):
+        """Aggregate functions that work via Hive inheritance."""
+        # Collection
+        self.validate_identity("SELECT COLLECT_LIST(x)")
+        self.validate_identity("SELECT COLLECT_SET(x)")
+
+        # Variance / stddev family
+        self.validate_identity("SELECT VAR_SAMP(x)")   # after Task 1 fix
+        self.validate_identity("SELECT VAR_POP(x)")    # after Task 1 fix
+        self.validate_identity("SELECT VARIANCE(x)", "SELECT VAR_SAMP(x)")  # VARIANCE is alias
+        self.validate_identity("SELECT STDDEV(x)")
+
+        # Percentile
+        self.validate_identity("SELECT PERCENTILE(x, 0.5)")
+
+        # Cross-dialect
+        self.validate_all(
+            "SELECT COLLECT_LIST(x)",
+            read={"spark": "SELECT COLLECT_LIST(x)"},
+            write={"maxcompute": "SELECT COLLECT_LIST(x)"},
+        )
+        self.validate_all(
+            "SELECT COLLECT_SET(x)",
+            read={"spark": "SELECT COLLECT_SET(x)"},
+            write={"maxcompute": "SELECT COLLECT_SET(x)"},
+        )
+
+    def test_inherited_math_functions(self):
+        """Math functions that work via Hive inheritance."""
+        self.validate_identity("SELECT GREATEST(a, b)")
+        self.validate_identity("SELECT LEAST(a, b)")
+        self.validate_identity("SELECT CBRT(8)")
+        self.validate_identity("SELECT FACTORIAL(5)")
+        self.validate_all(
+            "SELECT LOG2(8)",
+            write={"maxcompute": "SELECT LOG(2, 8)"},  # no exp.Log2 node; LOG(base, x) is valid MC
+        )
+
+    def test_inherited_json_functions(self):
+        """JSON functions that work via Hive inheritance."""
+        self.validate_identity("SELECT GET_JSON_OBJECT(s, '$.key')")
+        self.validate_identity("SELECT JSON_TUPLE(s, 'k1', 'k2')")
+
+
 if __name__ == "__main__":
     unittest.main()
