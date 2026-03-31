@@ -819,6 +819,14 @@ class TestMaxCompute(Validator):
             write={"maxcompute": "SELECT VAR_SAMP(x)"},
         )
 
+        # INSTR: MaxCompute uses INSTR(str, substr) not LOCATE(substr, str)
+        self.validate_identity("SELECT INSTR(s, 'sub')")
+        self.validate_all(
+            "SELECT LOCATE('sub', s)",
+            read={"hive": "SELECT LOCATE('sub', s)"},
+            write={"maxcompute": "SELECT INSTR(s, 'sub')"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
