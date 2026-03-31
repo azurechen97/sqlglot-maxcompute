@@ -241,11 +241,29 @@ class TestMaxCompute(Validator):
             },
         )
 
-        # TO_DATE: parses without Hive's TimeStrToTime wrapping (format stored as-is)
-        expr = self.parse_one("TO_DATE('2024-01-01', 'yyyy-mm-dd')")
+        # TO_DATE without format → DATE (TsOrDsToDate)
+        expr = self.parse_one("TO_DATE('2024-01-01')")
         self.assertIsInstance(expr, exp.TsOrDsToDate)
-        # Format should be stored as Oracle style, not strftime
-        self.assertEqual(expr.args.get("format").this, "yyyy-mm-dd")
+        self.assertIsNone(expr.args.get("format"))
+        self.validate_all(
+            "TO_DATE('2024-01-01')",
+            write={
+                "maxcompute": "TO_DATE('2024-01-01')",
+                "spark": "TO_DATE('2024-01-01')",
+            },
+        )
+
+        # TO_DATE with format → DATETIME (StrToTime); format stored as MaxCompute style, not strftime
+        expr = self.parse_one("TO_DATE('20240101', 'yyyymmdd')")
+        self.assertIsInstance(expr, exp.StrToTime)
+        self.assertEqual(expr.args.get("format").this, "yyyymmdd")
+        self.validate_all(
+            "TO_DATE('20240101', 'yyyymmdd')",
+            write={
+                "maxcompute": "TO_DATE('20240101', 'yyyymmdd')",
+                "spark": "TO_TIMESTAMP('20240101', 'yyyymmdd')",
+            },
+        )
 
         # TO_CHAR (untyped arg → ToChar)
         self.assertIsInstance(self.parse_one("TO_CHAR(dt, 'yyyy-mm-dd')"), exp.ToChar)
@@ -792,6 +810,130 @@ class TestMaxCompute(Validator):
         for sql in statements:
             with self.subTest(sql):
                 self.validate_identity(sql)
+
+
+    def test_generator_correctness_fixes(self):
+        # SPACE: MaxCompute has native SPACE(), not REPEAT(' ', n)
+        self.validate_identity("SELECT SPACE(5)")
+        self.validate_all(
+            "SELECT SPACE(5)",
+            read={"hive": "SELECT SPACE(5)"},
+            write={"maxcompute": "SELECT SPACE(5)"},
+        )
+
+        # VAR_POP: MaxCompute uses VAR_POP not VARIANCE_POP
+        self.validate_identity("SELECT VAR_POP(x)")
+        self.validate_all(
+            "SELECT VAR_POP(x)",
+            read={"spark": "SELECT VAR_POP(x)"},
+            write={"maxcompute": "SELECT VAR_POP(x)"},
+        )
+
+        # VAR_SAMP: MaxCompute uses VAR_SAMP not VARIANCE
+        self.validate_identity("SELECT VAR_SAMP(x)")
+        self.validate_all(
+            "SELECT VARIANCE(x)",
+            read={"spark": "SELECT VARIANCE(x)"},
+            write={"maxcompute": "SELECT VAR_SAMP(x)"},
+        )
+
+        # INSTR: MaxCompute uses INSTR(str, substr) not LOCATE(substr, str)
+        self.validate_identity("SELECT INSTR(s, 'sub')")
+        self.validate_all(
+            "SELECT LOCATE('sub', s)",
+            read={"hive": "SELECT LOCATE('sub', s)"},
+            write={"maxcompute": "SELECT INSTR(s, 'sub')"},
+        )
+
+        # SUBSTR: MaxCompute uses SUBSTR not SUBSTRING
+        self.validate_identity("SELECT SUBSTR(s, 1, 3)")
+        self.validate_all(
+            "SELECT SUBSTRING(s, 1, 3)",
+            read={"spark": "SELECT SUBSTRING(s, 1, 3)"},
+            write={"maxcompute": "SELECT SUBSTR(s, 1, 3)"},
+        )
+
+
+    def test_inherited_string_functions(self):
+        """Functions that work via Hive inheritance — tested here for regression coverage."""
+        # Case conversion
+        self.validate_identity("SELECT INITCAP(s)")
+        self.validate_identity("SELECT REVERSE(s)")
+        self.validate_identity("SELECT REPEAT(s, 3)")
+        self.validate_identity("SELECT SPACE(5)")  # after Task 1 fix
+
+        # Padding
+        self.validate_identity("SELECT LPAD(s, 5, '0')")
+        self.validate_identity("SELECT RPAD(s, 5, '0')")
+
+        # Trimming
+        self.validate_identity("SELECT LTRIM(s)")
+        self.validate_identity("SELECT RTRIM(s)")
+
+        # Regex
+        self.validate_identity("SELECT REGEXP_REPLACE(s, 'a', 'b')")
+        self.validate_identity("SELECT REGEXP_EXTRACT_ALL(s, '[0-9]+')")
+
+        # Lookup
+        self.validate_identity("SELECT INSTR(s, 'sub')")  # after Task 2 fix
+        self.validate_identity("SELECT FIND_IN_SET('a', 'a,b,c')")
+        self.validate_identity("SELECT SUBSTR(s, 1, 3)")  # after Task 3 fix
+        self.validate_identity("SELECT SUBSTRING_INDEX(s, ',', 2)")
+
+        # Misc
+        self.validate_identity("SELECT CONCAT_WS(',', s1, s2)")
+        self.validate_identity("SELECT FORMAT_NUMBER(1234567, 2)")
+
+        # Cross-dialect: Spark INITCAP → MaxCompute INITCAP
+        self.validate_all(
+            "SELECT INITCAP(s)",
+            read={"spark": "SELECT INITCAP(s)"},
+            write={"maxcompute": "SELECT INITCAP(s)"},
+        )
+
+
+    def test_inherited_aggregate_functions(self):
+        """Aggregate functions that work via Hive inheritance."""
+        # Collection
+        self.validate_identity("SELECT COLLECT_LIST(x)")
+        self.validate_identity("SELECT COLLECT_SET(x)")
+
+        # Variance / stddev family
+        self.validate_identity("SELECT VAR_SAMP(x)")   # after Task 1 fix
+        self.validate_identity("SELECT VAR_POP(x)")    # after Task 1 fix
+        self.validate_identity("SELECT VARIANCE(x)", "SELECT VAR_SAMP(x)")  # VARIANCE is alias
+        self.validate_identity("SELECT STDDEV(x)")
+
+        # Percentile
+        self.validate_identity("SELECT PERCENTILE(x, 0.5)")
+
+        # Cross-dialect
+        self.validate_all(
+            "SELECT COLLECT_LIST(x)",
+            read={"spark": "SELECT COLLECT_LIST(x)"},
+            write={"maxcompute": "SELECT COLLECT_LIST(x)"},
+        )
+        self.validate_all(
+            "SELECT COLLECT_SET(x)",
+            read={"spark": "SELECT COLLECT_SET(x)"},
+            write={"maxcompute": "SELECT COLLECT_SET(x)"},
+        )
+
+    def test_inherited_math_functions(self):
+        """Math functions that work via Hive inheritance."""
+        self.validate_identity("SELECT GREATEST(a, b)")
+        self.validate_identity("SELECT LEAST(a, b)")
+        self.validate_identity("SELECT CBRT(8)")
+        self.validate_identity("SELECT FACTORIAL(5)")
+        self.validate_all(
+            "SELECT LOG2(8)",
+            write={"maxcompute": "SELECT LOG(2, 8)"},  # no exp.Log2 node; LOG(base, x) is valid MC
+        )
+
+    def test_inherited_json_functions(self):
+        """JSON functions that work via Hive inheritance."""
+        self.validate_identity("SELECT GET_JSON_OBJECT(s, '$.key')")
+        self.validate_identity("SELECT JSON_TUPLE(s, 'k1', 'k2')")
 
 
 if __name__ == "__main__":

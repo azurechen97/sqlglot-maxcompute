@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.3.0] - 2026-03-31
+
+### Fixed (generator correctness)
+
+- `SPACE(n)` now emits `SPACE(n)` instead of `REPEAT(' ', n)`
+- `VAR_POP(x)` now emits `VAR_POP(x)` instead of `VARIANCE_POP(x)`
+- `VAR_SAMP(x)` / `VARIANCE(x)` now emits `VAR_SAMP(x)` instead of `VARIANCE(x)`
+- `INSTR(s, sub)` now emits `INSTR(s, sub)` instead of `LOCATE(sub, s)`
+- `SUBSTR(s, pos, len)` now emits `SUBSTR` instead of `SUBSTRING`
+
+### Added (parser)
+
+- `SUBSTR` as explicit MaxCompute parser alias for `exp.Substring`
+
+### Changed (internal)
+
+- Dialect split: `maxcompute.py` now delegates to `parser.py` and `generator.py` (mirrors sqlglot's own mypyc-compile refactor)
+
+### Tests
+
+- Regression coverage for ~20 functions previously relying on untested Hive inheritance:
+  INITCAP, REVERSE, REPEAT, LPAD/RPAD, LTRIM/RTRIM, REGEXP_REPLACE,
+  REGEXP_EXTRACT_ALL, INSTR, FIND_IN_SET, SUBSTR, SUBSTRING_INDEX,
+  CONCAT_WS, FORMAT_NUMBER, COLLECT_LIST/SET, VAR_SAMP, VAR_POP,
+  PERCENTILE, STDDEV, GREATEST/LEAST, CBRT, FACTORIAL, GET_JSON_OBJECT,
+  JSON_TUPLE
+
 ## [0.2.0] - 2026-03-31
 
 ### Added
