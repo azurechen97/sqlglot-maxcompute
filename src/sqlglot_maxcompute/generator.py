@@ -73,6 +73,8 @@ class MaxComputeGenerator(Hive.Generator):
         exp.Variance: rename_func("VAR_SAMP"),
         # String position: MaxCompute uses INSTR(str, substr), not LOCATE(substr, str)
         exp.StrPosition: lambda self, e: self.func("INSTR", e.this, e.args.get("substr")),
+        # TO_DATE(str, fmt) returns DATETIME — modeled as StrToTime; emit TO_DATE in MaxCompute
+        exp.StrToTime: lambda self, e: self.func("TO_DATE", e.this, e.args.get("format")),
     }
 
     def _dateadd_sql(

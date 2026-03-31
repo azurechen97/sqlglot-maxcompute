@@ -241,11 +241,29 @@ class TestMaxCompute(Validator):
             },
         )
 
-        # TO_DATE: parses without Hive's TimeStrToTime wrapping (format stored as-is)
-        expr = self.parse_one("TO_DATE('2024-01-01', 'yyyy-mm-dd')")
+        # TO_DATE without format → DATE (TsOrDsToDate)
+        expr = self.parse_one("TO_DATE('2024-01-01')")
         self.assertIsInstance(expr, exp.TsOrDsToDate)
-        # Format should be stored as Oracle style, not strftime
-        self.assertEqual(expr.args.get("format").this, "yyyy-mm-dd")
+        self.assertIsNone(expr.args.get("format"))
+        self.validate_all(
+            "TO_DATE('2024-01-01')",
+            write={
+                "maxcompute": "TO_DATE('2024-01-01')",
+                "spark": "TO_DATE('2024-01-01')",
+            },
+        )
+
+        # TO_DATE with format → DATETIME (StrToTime); format stored as MaxCompute style, not strftime
+        expr = self.parse_one("TO_DATE('20240101', 'yyyymmdd')")
+        self.assertIsInstance(expr, exp.StrToTime)
+        self.assertEqual(expr.args.get("format").this, "yyyymmdd")
+        self.validate_all(
+            "TO_DATE('20240101', 'yyyymmdd')",
+            write={
+                "maxcompute": "TO_DATE('20240101', 'yyyymmdd')",
+                "spark": "TO_TIMESTAMP('20240101', 'yyyymmdd')",
+            },
+        )
 
         # TO_CHAR (untyped arg → ToChar)
         self.assertIsInstance(self.parse_one("TO_CHAR(dt, 'yyyy-mm-dd')"), exp.ToChar)

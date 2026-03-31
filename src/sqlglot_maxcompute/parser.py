@@ -73,9 +73,13 @@ class MaxComputeParser(Hive.Parser):
         "DATE_FORMAT": lambda args: exp.TimeToStr(
             this=seq_get(args, 0), format=seq_get(args, 1)
         ),
-        # Hive override: MaxCompute TO_DATE accepts date types directly (no TimeStrToTime wrap)
-        "TO_DATE": lambda args: exp.TsOrDsToDate(
-            this=seq_get(args, 0), format=seq_get(args, 1)
+        # Hive override: TO_DATE return type depends on args:
+        #   TO_DATE(str)       → DATE   → TsOrDsToDate (no format)
+        #   TO_DATE(str, fmt)  → DATETIME → StrToTime (format present)
+        "TO_DATE": lambda args: (
+            exp.StrToTime(this=seq_get(args, 0), format=seq_get(args, 1))
+            if seq_get(args, 1) is not None
+            else exp.TsOrDsToDate(this=seq_get(args, 0))
         ),
         # Hive override: MaxCompute FROM_UNIXTIME takes 1 arg and returns DATETIME, not STRING
         "FROM_UNIXTIME": lambda args: exp.UnixToTime(this=seq_get(args, 0)),
