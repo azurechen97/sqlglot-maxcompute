@@ -836,5 +836,43 @@ class TestMaxCompute(Validator):
         )
 
 
+    def test_inherited_string_functions(self):
+        """Functions that work via Hive inheritance — tested here for regression coverage."""
+        # Case conversion
+        self.validate_identity("SELECT INITCAP(s)")
+        self.validate_identity("SELECT REVERSE(s)")
+        self.validate_identity("SELECT REPEAT(s, 3)")
+        self.validate_identity("SELECT SPACE(5)")  # after Task 1 fix
+
+        # Padding
+        self.validate_identity("SELECT LPAD(s, 5, '0')")
+        self.validate_identity("SELECT RPAD(s, 5, '0')")
+
+        # Trimming
+        self.validate_identity("SELECT LTRIM(s)")
+        self.validate_identity("SELECT RTRIM(s)")
+
+        # Regex
+        self.validate_identity("SELECT REGEXP_REPLACE(s, 'a', 'b')")
+        self.validate_identity("SELECT REGEXP_EXTRACT_ALL(s, '[0-9]+')")
+
+        # Lookup
+        self.validate_identity("SELECT INSTR(s, 'sub')")  # after Task 2 fix
+        self.validate_identity("SELECT FIND_IN_SET('a', 'a,b,c')")
+        self.validate_identity("SELECT SUBSTR(s, 1, 3)")  # after Task 3 fix
+        self.validate_identity("SELECT SUBSTRING_INDEX(s, ',', 2)")
+
+        # Misc
+        self.validate_identity("SELECT CONCAT_WS(',', s1, s2)")
+        self.validate_identity("SELECT FORMAT_NUMBER(1234567, 2)")
+
+        # Cross-dialect: Spark INITCAP → MaxCompute INITCAP
+        self.validate_all(
+            "SELECT INITCAP(s)",
+            read={"spark": "SELECT INITCAP(s)"},
+            write={"maxcompute": "SELECT INITCAP(s)"},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
