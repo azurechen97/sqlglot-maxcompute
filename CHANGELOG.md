@@ -4,6 +4,7 @@
 
 ### Fixed (generator correctness)
 
+- `TO_DATE(str, fmt)` now models return type as DATETIME (`exp.StrToTime`); `TO_DATE(str)` remains DATE (`exp.TsOrDsToDate`) — cross-dialect consumers now see the correct type for each form
 - `SPACE(n)` now emits `SPACE(n)` instead of `REPEAT(' ', n)`
 - `VAR_POP(x)` now emits `VAR_POP(x)` instead of `VARIANCE_POP(x)`
 - `VAR_SAMP(x)` / `VARIANCE(x)` now emits `VAR_SAMP(x)` instead of `VARIANCE(x)`
