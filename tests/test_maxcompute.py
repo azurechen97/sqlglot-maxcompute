@@ -218,6 +218,17 @@ class TestMaxCompute(Validator):
             },
         )
 
+        # DATE_SUB should emit DATEADD(date, -3, 'DAY'), not DATEADD(date, 3 * -1, 'DAY')
+        expr = self.parse_one("DATE_SUB('2023-01-10', 3)")
+        self.assertIsInstance(expr, exp.DateSub)
+        self.validate_all(
+            "DATE_SUB('2023-01-10', 3)",
+            write={
+                "maxcompute": "DATEADD('2023-01-10', -3, 'DAY')",
+                "spark": "DATE_ADD('2023-01-10', -3)",
+            },
+        )
+
     # -------------------------------------------------------------------------
     # Date/time conversion
     # -------------------------------------------------------------------------

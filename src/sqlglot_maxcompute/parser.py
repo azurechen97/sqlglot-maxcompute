@@ -83,6 +83,10 @@ class MaxComputeParser(Hive.Parser):
         ),
         # Hive override: MaxCompute FROM_UNIXTIME takes 1 arg and returns DATETIME, not STRING
         "FROM_UNIXTIME": lambda args: exp.UnixToTime(this=seq_get(args, 0)),
+        # Hive override: produce exp.DateSub so _dateadd_sql emits DATEADD(date, -n, unit)
+        # cleanly. Hive maps DATE_SUB to TsOrDsAdd(expression=Mul(n, -1)) which generates
+        # "3 * -1" in the output.
+        "DATE_SUB": lambda args: exp.DateSub(this=seq_get(args, 0), expression=seq_get(args, 1)),
         # Date arithmetic
         "DATEADD": _build_dateadd,
         "DATEDIFF": lambda args: exp.DateDiff(
