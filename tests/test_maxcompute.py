@@ -257,6 +257,23 @@ class TestMaxCompute(Validator):
             },
         )
 
+        # Bug 3: LOCATE(sub, str, start) — start position must pass through to INSTR
+        self.validate_all(
+            "LOCATE('bc', 'abcd', 2)",
+            read={"spark": "LOCATE('bc', 'abcd', 2)"},
+            write={
+                "maxcompute": "INSTR('abcd', 'bc', 2)",
+            },
+        )
+        # Without start position, INSTR(str, sub) is unchanged
+        self.validate_all(
+            "LOCATE('bc', 'abcd')",
+            read={"spark": "LOCATE('bc', 'abcd')"},
+            write={
+                "maxcompute": "INSTR('abcd', 'bc')",
+            },
+        )
+
     # -------------------------------------------------------------------------
     # Date/time conversion
     # -------------------------------------------------------------------------

@@ -76,7 +76,7 @@ class MaxComputeGenerator(Hive.Generator):
         # Numeric truncation: TRUNC(n, d)
         exp.Trunc: lambda self, e: self.func("TRUNC", e.this, e.args.get("decimals")),
         # String position: MaxCompute uses INSTR(str, substr), not LOCATE(substr, str)
-        exp.StrPosition: lambda self, e: self.func("INSTR", e.this, e.args.get("substr")),
+        exp.StrPosition: lambda self, e: self.func("INSTR", e.this, e.args.get("substr"), e.args.get("position")),
         # TO_DATE(str, fmt) returns DATETIME — modeled as StrToTime; emit TO_DATE in MaxCompute
         exp.StrToTime: lambda self, e: self.func("TO_DATE", e.this, e.args.get("format")),
     }
