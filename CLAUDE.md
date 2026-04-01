@@ -44,10 +44,10 @@ This split mirrors sqlglot's own mypyc-compile refactor (parsers/generators spli
 
 ## Implementation Status
 
-The dialect is complete at v0.3.1:
+The dialect is complete at v0.3.2:
 - **Parser**: ~65 functions explicitly mapped (date/time, string, aggregate, array, map); remainder inherited from Hive.
 - **Generator**: `TRANSFORMS` + named `_sql` methods for all major expression types; Hive handles the rest.
-- **Tests**: 39 test methods, 180+ subtests covering parse, round-trip, and cross-dialect transpilation.
+- **Tests**: 40 test methods, 186 subtests covering parse, round-trip, and cross-dialect transpilation.
 
 ## Key sqlglot patterns
 
@@ -60,6 +60,14 @@ When adding generator transforms in `Generator.TRANSFORMS`, use `self.func(name,
 Tests use a `Validator` base class (inline in `tests/test_maxcompute.py`) mirroring sqlglot's pattern:
 - `validate_all(sql, write={dialect: expected})` — cross-dialect transpilation assertions
 - `assertIsInstance(parse_one(sql, read="maxcompute"), exp.SomeClass)` — parse node assertions
+- **`read=` must be a dict** — `read={"spark": "LOCATE(...)"}`, not `read="spark"`. Bare string is silently ignored by `validate_all`.
+- **Pyright false positive** — `assertIsNotNone(x)` does not narrow types in Pyright; `x.field` after it shows "attribute of None" errors that are noise, not real bugs.
+
+**Development is test-driven (TDD).** For every fix or feature:
+1. Write the failing test first and run it to confirm it fails
+2. Implement the minimal change to make it pass
+3. Run the full suite to confirm no regressions
+4. Commit
 
 Before writing `validate_all` assertions, probe actual output first:
 ```bash
