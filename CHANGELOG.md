@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1] - 2026-04-01
+
+### Fixed (parser correctness)
+
+- `NOW()` now maps to `exp.CurrentTimestamp` so cross-dialect output is `CURRENT_TIMESTAMP` instead of `CURRENT_DATETIME()` (BigQuery-specific); round-trip in MaxCompute produces `GETDATE()` (a synonym)
+- `DATE_SUB(date, n)` now maps to `exp.DateSub` so output is `DATEADD(date, -n, 'DAY')` instead of `DATEADD(date, n * -1, 'DAY')`
+
 ## [0.3.0] - 2026-03-31
 
 ### Fixed (generator correctness)
