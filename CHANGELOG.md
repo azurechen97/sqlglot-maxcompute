@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2] - 2026-04-01
+
+### Fixed (parser + generator correctness)
+
+- `TRUNC(n, d)` now maps to `exp.Trunc` for numeric truncation; `TRUNC(dt, 'unit')` still routes to date truncation
+- `BOOL_AND(col)` / `BOOL_OR(col)` now emit correct MaxCompute names instead of `LOGICAL_AND` / `LOGICAL_OR`
+- `LOCATE(sub, str, start)` now passes the start position through to `INSTR(str, sub, start)` instead of silently dropping it
+
 ## [0.3.1] - 2026-04-01
 
 ### Fixed (parser correctness)
