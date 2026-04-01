@@ -116,7 +116,9 @@ class MaxComputeParser(Hive.Parser):
         # Current date/time
         "GETDATE": lambda args: exp.CurrentTimestamp(),
         "CURRENT_TIMESTAMP": lambda args: exp.CurrentTimestamp(),
-        "NOW": lambda args: exp.CurrentDatetime(),
+        # Hive override: NOW() returns DATETIME (≈ TIMESTAMP) — map to CurrentTimestamp
+        # so cross-dialect output is CURRENT_TIMESTAMP, not CURRENT_DATETIME (BigQuery-specific).
+        "NOW": lambda args: exp.CurrentTimestamp(),
         "CURRENT_TIMEZONE": lambda args: exp.CurrentTimezone(),
         # Conversion
         "TO_CHAR": build_timetostr_or_tochar,

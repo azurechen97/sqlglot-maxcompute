@@ -185,11 +185,11 @@ class TestMaxCompute(Validator):
             write={"spark": "CURRENT_TIMESTAMP()", "duckdb": "CURRENT_TIMESTAMP"},
         )
 
-        # NOW → CurrentDatetime
-        self.assertIsInstance(self.parse_one("NOW()"), exp.CurrentDatetime)
+        # NOW → CurrentTimestamp (not CurrentDatetime, which is BigQuery-specific)
+        self.assertIsInstance(self.parse_one("NOW()"), exp.CurrentTimestamp)
         self.validate_all(
             "NOW()",
-            write={"spark": "CURRENT_DATETIME()", "duckdb": "CURRENT_DATETIME()"},
+            write={"spark": "CURRENT_TIMESTAMP()", "duckdb": "CURRENT_TIMESTAMP"},
         )
 
         # CURRENT_TIMEZONE
@@ -197,6 +197,25 @@ class TestMaxCompute(Validator):
         self.validate_all(
             "CURRENT_TIMEZONE()",
             write={"spark": "CURRENT_TIMEZONE()", "duckdb": "CURRENT_TIMEZONE()"},
+        )
+
+    # -------------------------------------------------------------------------
+    # Bug fixes
+    # -------------------------------------------------------------------------
+
+    def test_031_fixes(self):
+        # NOW() should map to CurrentTimestamp so cross-dialect output is CURRENT_TIMESTAMP,
+        # not CURRENT_DATETIME() which is BigQuery-specific.
+        expr = self.parse_one("NOW()")
+        self.assertIsInstance(expr, exp.CurrentTimestamp)
+        self.validate_all(
+            "NOW()",
+            write={
+                "maxcompute": "GETDATE()",
+                "spark": "CURRENT_TIMESTAMP()",
+                "hive": "CURRENT_TIMESTAMP()",
+                "duckdb": "CURRENT_TIMESTAMP",
+            },
         )
 
     # -------------------------------------------------------------------------
@@ -654,8 +673,11 @@ class TestMaxCompute(Validator):
             write={"maxcompute": "SELECT GETDATE()"},
         )
 
-        # NOW → NOW
-        self.validate_identity("SELECT NOW()")
+        # NOW → GETDATE (both map to CurrentTimestamp; MaxCompute generator prefers GETDATE)
+        self.validate_all(
+            "SELECT NOW()",
+            write={"maxcompute": "SELECT GETDATE()"},
+        )
 
     def test_string_roundtrip(self):
         self.validate_identity("SELECT TOLOWER(s)")
@@ -793,7 +815,6 @@ class TestMaxCompute(Validator):
             "SELECT DATETRUNC(dt, 'MONTH')",
             "SELECT DATEPART(dt, 'YEAR')",
             "SELECT GETDATE()",
-            "SELECT NOW()",
             "SELECT TOLOWER(s)",
             "SELECT TOUPPER(s)",
             "SELECT WM_CONCAT(',', col)",
@@ -810,6 +831,12 @@ class TestMaxCompute(Validator):
         for sql in statements:
             with self.subTest(sql):
                 self.validate_identity(sql)
+
+        # NOW() round-trips to GETDATE() (both map to CurrentTimestamp)
+        self.validate_all(
+            "SELECT NOW()",
+            write={"maxcompute": "SELECT GETDATE()"},
+        )
 
 
     def test_generator_correctness_fixes(self):
