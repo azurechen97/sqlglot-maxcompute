@@ -26,13 +26,15 @@ uv run pytest tests/test_foo.py::test_bar
 
 ## Architecture
 
-The entire dialect lives in `src/sqlglot_maxcompute/maxcompute.py`. The `MaxCompute` class subclasses `sqlglot.dialects.hive.Hive` and overrides three inner classes:
+The dialect is split across three files in `src/sqlglot_maxcompute/`:
 
-- **`Tokenizer`** — adds MaxCompute-specific keywords (e.g., `EXPORT`, `OPTION`) on top of Hive's keywords.
-- **`Parser`** — maps MaxCompute built-in function names to canonical `sqlglot.exp` expression nodes (e.g., `DATEADD` → `TsOrDsAdd`, `DATEDIFF` → `DateDiff`, `WM_CONCAT` → `GroupConcat`).
-- **`Generator`** — will map canonical expression nodes back to MaxCompute SQL syntax via auto-discovered `<name>_sql()` methods or `TRANSFORMS` entries. Currently `pass`.
+- **`parser.py`** — `MaxComputeParser(Hive.Parser)`: `FUNCTIONS` dict mapping MaxCompute function names to canonical `sqlglot.exp` nodes; `PROPERTY_PARSERS` for `LIFECYCLE`, `RANGE`, and `AUTO`; helper builders `_build_dateadd`, `_build_datetrunc`.
+- **`generator.py`** — `MaxComputeGenerator(Hive.Generator)`: `TYPE_MAPPING`, `TRANSFORMS`, and named `_sql` methods that map canonical AST nodes back to MaxCompute SQL.
+- **`maxcompute.py`** — `MaxCompute(Hive)`: slim coordinator that sets `TIME_MAPPING`/`DATE_FORMAT`/`TIME_FORMAT`, adds `Tokenizer` keywords (`EXPORT`, `LIFECYCLE`, `OPTION`), and wires `Parser = MaxComputeParser` / `Generator = MaxComputeGenerator`.
 
 The dialect is registered as a plugin in `pyproject.toml` under `[project.entry-points."sqlglot.dialects"]`, so after installation it is automatically discoverable by sqlglot as `"maxcompute"`.
+
+This split mirrors sqlglot's own mypyc-compile refactor (parsers/generators split by file) and is required for compatibility with sqlglot ≥ 31 compiled wheels.
 
 `local/` contains development scratch files and references — **not part of the package**:
 - `scratch.py` — keyword comparison scratch script
@@ -42,11 +44,10 @@ The dialect is registered as a plugin in `pyproject.toml` under `[project.entry-
 
 ## Implementation Status
 
-The dialect is largely complete. Current state:
-- **Parser**: ~65 functions mapped across date/time, string, aggregate, array, and map categories.
-- **Generator**: `TRANSFORMS` entries + named `_sql` methods for all major expression types; inherits Hive for the rest.
-- **Tests**: `tests/test_maxcompute.py` covers Parser (parse + cross-dialect) and Generator (round-trip + cross-dialect).
-- **Reference**: Full implementation checklist is in `docs/superpowers/specs/2026-03-13-maxcompute-dialect-design.md`.
+The dialect is complete at v0.3.1:
+- **Parser**: ~65 functions explicitly mapped (date/time, string, aggregate, array, map); remainder inherited from Hive.
+- **Generator**: `TRANSFORMS` + named `_sql` methods for all major expression types; Hive handles the rest.
+- **Tests**: 39 test methods, 180+ subtests covering parse, round-trip, and cross-dialect transpilation.
 
 ## Key sqlglot patterns
 
@@ -98,3 +99,10 @@ Note: snapshots exceed token limits; grep the saved file for the button ref inst
 - **Named `_sql` methods vs TRANSFORMS** — use a named method when the base class already defines one (e.g. `extract_sql`, `groupconcat_sql`); both work but the method is cleaner and avoids surprise overrides.
 - **Don't add empty `PROPERTIES_LOCATION = {**Hive.Generator.PROPERTIES_LOCATION}`** — pure boilerplate; only add the dict when you have new entries to include.
 - **DateSub string-literal delta (BigQuery quirk)** — BigQuery's `DATE_SUB` stores the magnitude as a string literal; normalize before negating: `exp.Literal.number(delta.this)` so you emit `-3` not `-'3'`.
+
+## DDL design decisions
+
+- **LIFECYCLE vs TBLPROPERTIES coexistence** — stored as `exp.Property(this=exp.var("LIFECYCLE"), value=...)`. The `properties_sql` override in `MaxComputeGenerator` separates Var-keyed properties (rendered bare as `LIFECYCLE 30`) from string-keyed ones (delegated to Hive's TBLPROPERTIES wrapper). This avoids overriding `PROPERTIES_LOCATION[exp.Property]`, which would break other dialects.
+- **RANGE CLUSTERED BY** — reuses `exp.ClusteredByProperty` with an undeclared `args["range"] = True` flag. Undeclared args survive `copy()`/`deepcopy()` in sqlglot's `Expression` base. The generator's `clusteredbyproperty_sql` override prepends `RANGE ` when the flag is present.
+- **AUTO PARTITIONED BY** — parsed as `PartitionedByProperty(this=DateTrunc(...))` or `PartitionedByProperty(this=Alias(this=DateTrunc(...), alias=...))`. The generator detects `DateTrunc`/`TimestampTrunc`/`DatetimeTrunc` (or `Alias` wrapping one) as the `this` child to identify auto-partition nodes and emit `AUTO PARTITIONED BY (TRUNC_TIME(...))`.
+- **TO_DATE return type** — `TO_DATE(str)` → `exp.TsOrDsToDate` (DATE); `TO_DATE(str, fmt)` → `exp.StrToTime` (DATETIME). The generator maps `exp.StrToTime` back to `TO_DATE(str, fmt)` so MaxCompute output is correct and cross-dialect consumers see the right type.

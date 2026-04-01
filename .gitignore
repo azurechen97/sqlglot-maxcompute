@@ -14,5 +14,5 @@ local/
 
 # Claude Code
 .claude
-docs/superpowers/plans/
+docs/
 .playwright-mcp
