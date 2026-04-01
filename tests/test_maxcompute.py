@@ -966,6 +966,326 @@ class TestMaxCompute(Validator):
         self.validate_identity("SELECT GET_JSON_OBJECT(s, '$.key')")
         self.validate_identity("SELECT JSON_TUPLE(s, 'k1', 'k2')")
 
+    # -------------------------------------------------------------------------
+    # Math functions (comprehensive)
+    # -------------------------------------------------------------------------
+
+    def test_math_functions(self):
+        """Arithmetic, exponential, trigonometric, bitwise, and misc math."""
+        # Basic arithmetic
+        self.validate_identity("SELECT ABS(-5)")
+        self.validate_identity("SELECT CEIL(1.5)")
+        self.validate_identity("SELECT FLOOR(1.9)")
+        self.validate_identity("SELECT ROUND(3.14)")
+        self.validate_identity("SELECT ROUND(3.14159, 2)")
+        self.validate_identity("SELECT SQRT(4)")
+        # POW → POWER (SQL standard name; both valid in MaxCompute)
+        self.validate_identity("SELECT POW(2, 10)", "SELECT POWER(2, 10)")
+        # Exponential / logarithmic
+        self.validate_identity("SELECT EXP(1)")
+        self.validate_identity("SELECT LN(1.0)")
+        # Single-arg LOG → LN (MaxCompute LOG requires 2 args: LOG(base, x))
+        self.validate_identity("SELECT LOG(1.0)", "SELECT LN(1.0)")
+        # LOG10 → LOG(10, x)
+        self.validate_identity("SELECT LOG10(100)", "SELECT LOG(10, 100)")
+        self.validate_all(
+            "SELECT LOG10(100)",
+            write={"maxcompute": "SELECT LOG(10, 100)", "spark": "SELECT LOG(10, 100)", "hive": "SELECT LOG(10, 100)"},
+        )
+        # Trigonometric
+        self.validate_identity("SELECT SIN(0)")
+        self.validate_identity("SELECT COS(0)")
+        self.validate_identity("SELECT TAN(0)")
+        self.validate_identity("SELECT ASIN(0)")
+        self.validate_identity("SELECT ACOS(1)")
+        self.validate_identity("SELECT ATAN(1)")
+        self.validate_identity("SELECT ATAN2(1, 1)")
+        self.validate_identity("SELECT DEGREES(3.14159)")
+        self.validate_identity("SELECT RADIANS(180)")
+        # Constants
+        self.validate_identity("SELECT PI()")
+        self.validate_identity("SELECT E()")
+        # Sign / polarity
+        self.validate_identity("SELECT SIGN(-5)")
+        self.validate_identity("SELECT NEGATIVE(-3)")
+        self.validate_identity("SELECT POSITIVE(3)")
+        # Number base / bitwise
+        self.validate_identity("SELECT BIN(10)")
+        self.validate_identity("SELECT HEX(255)")
+        self.validate_identity("SELECT UNHEX('FF')")
+        self.validate_identity("SELECT CONV('FF', 16, 10)")
+        self.validate_identity("SELECT SHIFTLEFT(1, 3)")
+        self.validate_identity("SELECT SHIFTRIGHT(8, 2)")
+        # Misc
+        self.validate_identity("SELECT RAND()")
+        self.validate_identity("SELECT RAND(42)")
+        self.validate_identity("SELECT ISNAN(1.0)")
+        self.validate_identity("SELECT WIDTH_BUCKET(5, 0, 10, 5)")
+        # Cross-dialect: GREATEST/LEAST are universal
+        self.validate_all(
+            "SELECT GREATEST(a, b, c)",
+            write={"maxcompute": "SELECT GREATEST(a, b, c)", "spark": "SELECT GREATEST(a, b, c)", "duckdb": "SELECT GREATEST(a, b, c)"},
+        )
+        self.validate_all(
+            "SELECT LEAST(a, b, c)",
+            write={"maxcompute": "SELECT LEAST(a, b, c)", "spark": "SELECT LEAST(a, b, c)", "duckdb": "SELECT LEAST(a, b, c)"},
+        )
+
+    # -------------------------------------------------------------------------
+    # String functions (extended)
+    # -------------------------------------------------------------------------
+
+    def test_string_functions_extended(self):
+        """String functions not covered by test_inherited_string_functions."""
+        # Length
+        self.validate_identity("SELECT LENGTH('hello')")
+        self.validate_identity("SELECT LENGTHB('hello')")
+        # Character
+        self.validate_identity("SELECT ASCII('A')")
+        self.validate_identity("SELECT CHR(65)")
+        # Trim (LTRIM/RTRIM covered in inherited; TRIM is the two-sided form)
+        self.validate_identity("SELECT TRIM('  hello  ')")
+        # Concatenation (CONCAT_WS covered in inherited)
+        self.validate_identity("SELECT CONCAT('a', 'b', 'c')")
+        # Manipulation
+        self.validate_identity("SELECT REPLACE('hello world', 'world', 'there')")
+        self.validate_identity("SELECT TRANSLATE('hello', 'el', 'ip')")
+        self.validate_identity("SELECT SOUNDEX('hello')")
+        # Hashing / encoding
+        self.validate_identity("SELECT MD5('hello')")
+        self.validate_identity("SELECT SHA2('hello', 256)")
+        self.validate_identity("SELECT BASE64('hello')")
+        self.validate_identity("SELECT URL_ENCODE('hello world')")
+        self.validate_identity("SELECT URL_DECODE('hello+world')")
+        self.validate_identity("SELECT CRC32('hello')")
+        # LOCATE(substr, str) → INSTR(str, substr) — arg order swap
+        self.validate_all(
+            "LOCATE('lo', 'hello')",
+            write={"maxcompute": "INSTR('hello', 'lo')"},
+        )
+        # Regexp (REGEXP_REPLACE and REGEXP_EXTRACT_ALL in inherited; adding REGEXP_EXTRACT and COUNT)
+        self.validate_identity("SELECT REGEXP_EXTRACT('hello123', '[0-9]+', 0)")
+        self.validate_identity("SELECT REGEXP_COUNT('hello123world456', '[0-9]+')")
+        self.validate_all(
+            "SELECT REGEXP_EXTRACT('hello123', '[0-9]+', 0)",
+            write={
+                "maxcompute": "SELECT REGEXP_EXTRACT('hello123', '[0-9]+', 0)",
+                "spark": "SELECT REGEXP_EXTRACT('hello123', '[0-9]+', 0)",
+                "hive": "SELECT REGEXP_EXTRACT('hello123', '[0-9]+', 0)",
+            },
+        )
+        # NVL → COALESCE (both work in MaxCompute; normalized to COALESCE)
+        self.validate_all(
+            "NVL(a, 'default')",
+            write={"maxcompute": "COALESCE(a, 'default')", "spark": "COALESCE(a, 'default')"},
+        )
+        # DECODE → CASE WHEN (MaxCompute DECODE is an Oracle-style alias)
+        self.validate_all(
+            "DECODE(x, 1, 'one', 2, 'two', 'other')",
+            write={
+                "maxcompute": "CASE WHEN x = 1 THEN 'one' WHEN x = 2 THEN 'two' ELSE 'other' END",
+                "hive": "CASE WHEN x = 1 THEN 'one' WHEN x = 2 THEN 'two' ELSE 'other' END",
+            },
+        )
+
+    # -------------------------------------------------------------------------
+    # Window functions
+    # -------------------------------------------------------------------------
+
+    def test_window_functions(self):
+        """Ranking, navigation, and aggregate window functions with frames."""
+        # Ranking functions
+        self.validate_identity("SELECT ROW_NUMBER() OVER (PARTITION BY a ORDER BY b) FROM t")
+        self.validate_identity("SELECT RANK() OVER (ORDER BY b DESC) FROM t")
+        self.validate_identity("SELECT DENSE_RANK() OVER (PARTITION BY a ORDER BY b) FROM t")
+        self.validate_identity("SELECT NTILE(4) OVER (ORDER BY b) FROM t")
+        self.validate_identity("SELECT PERCENT_RANK() OVER (ORDER BY b) FROM t")
+        self.validate_identity("SELECT CUME_DIST() OVER (ORDER BY b) FROM t")
+        # Navigation functions
+        self.validate_identity("SELECT LAG(col, 1, 0) OVER (ORDER BY b) FROM t")
+        self.validate_identity("SELECT LEAD(col, 1, NULL) OVER (ORDER BY b) FROM t")
+        self.validate_identity("SELECT FIRST_VALUE(col) OVER (ORDER BY b) FROM t")
+        self.validate_identity(
+            "SELECT LAST_VALUE(col) OVER (ORDER BY b ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t"
+        )
+        self.validate_identity("SELECT NTH_VALUE(col, 2) OVER (ORDER BY b) FROM t")
+        # Aggregate windows with frame clauses
+        self.validate_identity(
+            "SELECT SUM(x) OVER (PARTITION BY a ORDER BY b ROWS BETWEEN 3 PRECEDING AND CURRENT ROW) FROM t"
+        )
+        self.validate_identity("SELECT AVG(x) OVER (PARTITION BY a) FROM t")
+        self.validate_identity(
+            "SELECT COUNT(*) OVER (PARTITION BY a ORDER BY b RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t"
+        )
+        self.validate_identity("SELECT MAX(x) OVER (PARTITION BY a ORDER BY b) FROM t")
+        self.validate_identity("SELECT MIN(x) OVER (PARTITION BY a ORDER BY b) FROM t")
+        # Cross-dialect: standard window functions are portable
+        self.validate_all(
+            "SELECT ROW_NUMBER() OVER (PARTITION BY a ORDER BY b) FROM t",
+            write={
+                "maxcompute": "SELECT ROW_NUMBER() OVER (PARTITION BY a ORDER BY b) FROM t",
+                "spark": "SELECT ROW_NUMBER() OVER (PARTITION BY a ORDER BY b) FROM t",
+                "hive": "SELECT ROW_NUMBER() OVER (PARTITION BY a ORDER BY b) FROM t",
+            },
+        )
+        self.validate_all(
+            "SELECT LAG(col, 1, 0) OVER (PARTITION BY a ORDER BY b) FROM t",
+            write={
+                "maxcompute": "SELECT LAG(col, 1, 0) OVER (PARTITION BY a ORDER BY b) FROM t",
+                "spark": "SELECT LAG(col, 1, 0) OVER (PARTITION BY a ORDER BY b) FROM t",
+            },
+        )
+        self.validate_all(
+            "SELECT SUM(x) OVER (PARTITION BY a ORDER BY b ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t",
+            write={
+                "maxcompute": "SELECT SUM(x) OVER (PARTITION BY a ORDER BY b ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t",
+                "spark": "SELECT SUM(x) OVER (PARTITION BY a ORDER BY b ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t",
+            },
+        )
+
+    # -------------------------------------------------------------------------
+    # Aggregate functions (extended)
+    # -------------------------------------------------------------------------
+
+    def test_aggregate_functions_extended(self):
+        """Aggregate functions not covered by test_statistical_aggregates or test_inherited_aggregate_functions."""
+        # PERCENTILE_CONT / PERCENTILE_DISC (WITHIN GROUP syntax)
+        self.validate_identity("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x)")
+        self.validate_identity("SELECT PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY x)")
+        self.validate_all(
+            "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary)",
+            write={
+                "maxcompute": "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary)",
+                "spark": "SELECT PERCENTILE_APPROX(salary, 0.5)",
+            },
+        )
+        # Map aggregation
+        self.validate_identity("SELECT MAP_AGG(k, v)")
+        self.validate_all(
+            "SELECT MAP_AGG(k, v)",
+            write={"maxcompute": "SELECT MAP_AGG(k, v)", "spark": "SELECT MAP_AGG(k, v)"},
+        )
+        # STR_TO_MAP
+        self.validate_identity("SELECT STR_TO_MAP('a:1,b:2', ',', ':')")
+
+    # -------------------------------------------------------------------------
+    # Conditional and misc functions
+    # -------------------------------------------------------------------------
+
+    def test_conditional_and_misc(self):
+        """IF, NULLIF, COALESCE, HASH, UUID, and related functions."""
+        # IF round-trips in MaxCompute; transpiles to CASE WHEN in dialects that lack it
+        self.validate_identity("IF(a > 1, 'yes', 'no')")
+        self.validate_all(
+            "IF(a > 1, 1, 0)",
+            write={
+                "maxcompute": "IF(a > 1, 1, 0)",
+                "spark": "IF(a > 1, 1, 0)",
+                "postgres": "CASE WHEN a > 1 THEN 1 ELSE 0 END",
+            },
+        )
+        # NULLIF / COALESCE
+        self.validate_identity("NULLIF(a, 0)")
+        self.validate_identity("COALESCE(a, b, 'default')")
+        self.validate_all(
+            "COALESCE(a, b)",
+            write={"maxcompute": "COALESCE(a, b)", "spark": "COALESCE(a, b)", "postgres": "COALESCE(a, b)"},
+        )
+        # Misc
+        self.validate_identity("HASH(a)")
+        self.validate_identity("UUID()")
+        self.validate_identity("GET_USER_ID()")
+
+    # -------------------------------------------------------------------------
+    # Type casting
+    # -------------------------------------------------------------------------
+
+    def test_type_casting(self):
+        """CAST to all MaxCompute data types including complex types."""
+        # Numeric
+        self.validate_identity("CAST(x AS BIGINT)")
+        self.validate_identity("CAST(x AS INT)")
+        self.validate_identity("CAST(x AS SMALLINT)")
+        self.validate_identity("CAST(x AS TINYINT)")
+        self.validate_identity("CAST(x AS FLOAT)")
+        self.validate_identity("CAST(x AS DOUBLE)")
+        self.validate_identity("CAST(x AS DECIMAL(10, 2))")
+        self.validate_identity("CAST(x AS BOOLEAN)")
+        self.validate_identity("CAST(x AS BINARY)")
+        # String: VARCHAR/CHAR collapse to STRING in MaxCompute
+        self.validate_identity("CAST(x AS STRING)")
+        self.validate_identity("CAST(x AS VARCHAR(100))", "CAST(x AS STRING)")
+        self.validate_identity("CAST(x AS CHAR(10))", "CAST(x AS STRING)")
+        # Date/time
+        self.validate_identity("CAST(x AS DATE)")
+        self.validate_identity("CAST(x AS DATETIME)")
+        self.validate_identity("CAST(x AS TIMESTAMP)")
+        # Complex types
+        self.validate_identity("CAST(x AS ARRAY<STRING>)")
+        self.validate_identity("CAST(x AS MAP<STRING, BIGINT>)")
+        # Cross-dialect: STRING is the canonical string type in Hive-family dialects
+        self.validate_all(
+            "CAST(x AS STRING)",
+            write={"maxcompute": "CAST(x AS STRING)", "spark": "CAST(x AS STRING)", "hive": "CAST(x AS STRING)"},
+        )
+
+    # -------------------------------------------------------------------------
+    # DDL (extended)
+    # -------------------------------------------------------------------------
+
+    def test_ddl_extended(self):
+        """DDL: column/table comments, IF NOT EXISTS, STORED AS."""
+        # Column and table-level COMMENT
+        self.validate_identity(
+            "CREATE TABLE t (id BIGINT COMMENT 'primary key', name STRING) COMMENT 'user table'"
+        )
+        # IF NOT EXISTS
+        self.validate_identity("CREATE TABLE IF NOT EXISTS t (id BIGINT)")
+        # STORED AS: MaxCompute/Hive emit format name only (no STORED AS keyword)
+        self.validate_identity(
+            "CREATE TABLE t (id BIGINT) STORED AS PARQUET",
+            "CREATE TABLE t (id BIGINT) PARQUET",
+        )
+        self.validate_identity(
+            "CREATE TABLE t (id BIGINT) STORED AS ORC",
+            "CREATE TABLE t (id BIGINT) ORC",
+        )
+
+    # -------------------------------------------------------------------------
+    # DML patterns
+    # -------------------------------------------------------------------------
+
+    def test_dml(self):
+        """Core DML: SELECT, JOIN, subquery, set operations."""
+        # Basic clauses
+        self.validate_identity("SELECT a, b FROM t WHERE a > 1")
+        self.validate_identity("SELECT a, COUNT(*) FROM t GROUP BY a HAVING COUNT(*) > 1")
+        self.validate_identity("SELECT a FROM t ORDER BY a DESC LIMIT 10")
+        self.validate_identity("SELECT DISTINCT a FROM t")
+        # Joins
+        self.validate_identity("SELECT a FROM t1 JOIN t2 ON t1.id = t2.id")
+        self.validate_identity("SELECT a FROM t1 LEFT JOIN t2 ON t1.id = t2.id")
+        self.validate_identity("SELECT a FROM t1 RIGHT JOIN t2 ON t1.id = t2.id")
+        self.validate_identity("SELECT a FROM t1 CROSS JOIN t2")
+        # Subquery
+        self.validate_identity("SELECT * FROM (SELECT a FROM t) AS sub")
+        self.validate_identity("SELECT a FROM t WHERE a IN (SELECT b FROM t2)")
+        # Set operations
+        self.validate_identity("SELECT a FROM t1 UNION ALL SELECT a FROM t2")
+        self.validate_identity("SELECT a FROM t1 UNION SELECT a FROM t2")
+        self.validate_identity("SELECT a FROM t1 INTERSECT SELECT a FROM t2")
+        self.validate_identity("SELECT a FROM t1 EXCEPT SELECT a FROM t2")
+        # Expressions
+        self.validate_identity("SELECT a IS NULL FROM t")
+        # Hive/MaxCompute normalizes IS NOT NULL → NOT ... IS NULL
+        self.validate_identity("SELECT a IS NOT NULL FROM t", "SELECT NOT a IS NULL FROM t")
+        self.validate_identity("SELECT CASE WHEN a > 0 THEN 'pos' WHEN a < 0 THEN 'neg' ELSE 'zero' END FROM t")
+        self.validate_identity("SELECT a BETWEEN 1 AND 10 FROM t")
+        # Hive/MaxCompute normalizes NOT BETWEEN → NOT ... BETWEEN
+        self.validate_identity("SELECT a NOT BETWEEN 1 AND 10 FROM t", "SELECT NOT a BETWEEN 1 AND 10 FROM t")
+        self.validate_identity("SELECT a LIKE '%hello%' FROM t")
+        self.validate_identity("SELECT a RLIKE '^[0-9]+$' FROM t")
+
 
 if __name__ == "__main__":
     unittest.main()
