@@ -1,6 +1,13 @@
 # Changelog
 
-## [0.3.2] - 2026-04-01
+## [0.4.0] - 2026-04-01
+
+### Changed (internal refactor)
+
+- `maxcompute.py` renamed to `dialect.py` — the coordinator class `MaxCompute` is now in `src/sqlglot_maxcompute/dialect.py`
+- `MaxComputeParser` now inherits from `HiveParser` (imported from `sqlglot.parsers.hive`) instead of `Hive.Parser`
+- `MaxComputeGenerator` now inherits from `HiveGenerator` (imported from `sqlglot.generators.hive`) instead of `Hive.Generator`
+- `sqlglot` dependency floor raised to `>=30.1.0` (first release with split `parsers/` and `generators/` modules)
 
 ### Fixed (parser + generator correctness)
 
@@ -32,7 +39,7 @@
 
 ### Changed (internal)
 
-- Dialect split: `maxcompute.py` now delegates to `parser.py` and `generator.py` (mirrors sqlglot's own mypyc-compile refactor)
+- Dialect split: `dialect.py` now delegates to `parser.py` and `generator.py` (mirrors sqlglot's own mypyc-compile refactor)
 
 ### Tests
 
