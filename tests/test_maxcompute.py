@@ -243,6 +243,20 @@ class TestMaxCompute(Validator):
         expr2 = self.parse_one("TRUNC(dt, 'MONTH')")
         self.assertIsInstance(expr2, exp.DateTrunc)
 
+        # Bug 2: BOOL_AND / BOOL_OR — aggregate, not infix AND/OR
+        self.validate_all(
+            "SELECT BOOL_AND(flag) FROM t",
+            write={
+                "maxcompute": "SELECT BOOL_AND(flag) FROM t",
+            },
+        )
+        self.validate_all(
+            "SELECT BOOL_OR(flag) FROM t",
+            write={
+                "maxcompute": "SELECT BOOL_OR(flag) FROM t",
+            },
+        )
+
     # -------------------------------------------------------------------------
     # Date/time conversion
     # -------------------------------------------------------------------------

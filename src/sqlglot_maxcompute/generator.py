@@ -67,6 +67,8 @@ class MaxComputeGenerator(Hive.Generator):
         exp.ApproxDistinct: rename_func("APPROX_DISTINCT"),
         exp.ArgMax: lambda self, e: self.func("ARG_MAX", e.this, e.expression),
         exp.ArgMin: lambda self, e: self.func("ARG_MIN", e.this, e.expression),
+        exp.LogicalAnd: rename_func("BOOL_AND"),
+        exp.LogicalOr: rename_func("BOOL_OR"),
         # Statistical aggregate fixes (Hive emits wrong names)
         exp.Space: rename_func("SPACE"),
         exp.VariancePop: rename_func("VAR_POP"),
