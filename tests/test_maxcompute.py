@@ -229,6 +229,20 @@ class TestMaxCompute(Validator):
             },
         )
 
+    def test_032_fixes(self):
+        # Bug 1: TRUNC(n, d) — numeric truncation, not date truncation
+        expr = self.parse_one("TRUNC(3.14, 2)")
+        self.assertIsInstance(expr, exp.Trunc)
+        self.validate_all(
+            "TRUNC(3.14, 2)",
+            write={
+                "maxcompute": "TRUNC(3.14, 2)",
+            },
+        )
+        # TRUNC with a string unit still routes to DATETRUNC
+        expr2 = self.parse_one("TRUNC(dt, 'MONTH')")
+        self.assertIsInstance(expr2, exp.DateTrunc)
+
     # -------------------------------------------------------------------------
     # Date/time conversion
     # -------------------------------------------------------------------------

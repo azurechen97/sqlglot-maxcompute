@@ -104,6 +104,13 @@ class MaxComputeParser(Hive.Parser):
         ),
         "DATETRUNC": _build_datetrunc,
         "TRUNC_TIME": _build_datetrunc,
+        # TRUNC(n, d)    → exp.Trunc  (numeric truncation)
+        # TRUNC(dt, 'u') → _build_datetrunc (date truncation, same as TRUNC_TIME)
+        "TRUNC": lambda args: (
+            _build_datetrunc(args)
+            if seq_get(args, 1) is not None and seq_get(args, 1).is_string
+            else exp.Trunc(this=seq_get(args, 0), decimals=seq_get(args, 1))
+        ),
         "DAYOFMONTH": exp.DayOfMonth.from_arg_list,
         "DAYOFWEEK": exp.DayOfWeek.from_arg_list,
         "DAYOFYEAR": exp.DayOfYear.from_arg_list,
