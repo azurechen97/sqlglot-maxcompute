@@ -10,6 +10,8 @@ Registers the `maxcompute` dialect via Python entry points so that SQLGlot can p
 pip install sqlglot-maxcompute
 ```
 
+Requires Python ≥ 3.9 and SQLGlot ≥ 29.
+
 ## Usage
 
 ```python
@@ -19,72 +21,82 @@ import sqlglot
 ast = sqlglot.parse_one("SELECT DATEADD(dt, 1, 'DAY')", read="maxcompute")
 
 # Transpile from another dialect to MaxCompute
-sqlglot.transpile(
-    "SELECT DATE_ADD(dt, 1)",
-    read="spark",
-    write="maxcompute",
-)
+sqlglot.transpile("SELECT DATE_ADD(dt, 1)", read="spark", write="maxcompute")
 # ["SELECT DATEADD(dt, 1, 'DAY')"]
 
 # Transpile from MaxCompute to another dialect
-sqlglot.transpile(
-    "SELECT DATETRUNC(dt, 'MONTH')",
-    read="maxcompute",
-    write="spark",
-)
+sqlglot.transpile("SELECT DATETRUNC(dt, 'MONTH')", read="maxcompute", write="spark")
 # ["SELECT TRUNC(dt, 'MONTH')"]
 
-# Round-trip: parse and regenerate MaxCompute SQL
+# TO_DATE return type depends on args:
+#   without format → DATE    (exp.TsOrDsToDate)
+#   with format    → DATETIME (exp.StrToTime)
+sqlglot.transpile("TO_DATE('20240101', 'yyyymmdd')", read="maxcompute", write="spark")
+# ["TO_TIMESTAMP('20240101', 'yyyymmdd')"]
+
+# Round-trip MaxCompute DDL
 sqlglot.transpile(
-    "CREATE TABLE t (id INT) LIFECYCLE 30",
+    "CREATE TABLE t (id BIGINT) LIFECYCLE 30",
     read="maxcompute",
     write="maxcompute",
 )
-# ["CREATE TABLE t (id INT) LIFECYCLE 30"]
+# ["CREATE TABLE t (id BIGINT) LIFECYCLE 30"]
 ```
 
-## What's implemented
+## What's supported
 
-### Parser (MaxCompute → canonical AST)
+### Parser — MaxCompute → canonical AST
 
 | Category | Functions |
 |---|---|
-| Date arithmetic | `DATEADD`, `DATEDIFF`, `ADD_MONTHS`, `MONTHS_BETWEEN` |
-| Date extraction | `DATEPART`, `DATETRUNC`, `TRUNC_TIME`, `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`, `HOUR`, `MINUTE`, `SECOND`, `QUARTER`, `WEEKDAY`, `WEEKOFYEAR` |
-| Date conversion | `DATE_FORMAT`, `TO_CHAR`, `TO_DATE`, `FROM_UNIXTIME`, `GETDATE`, `NOW`, `CURRENT_TIMESTAMP`, `CURRENT_TIMEZONE`, `FROM_UTC_TIMESTAMP` |
+| Date arithmetic | `DATEADD`, `DATE_SUB`, `DATEDIFF`, `ADD_MONTHS`, `MONTHS_BETWEEN` |
+| Date extraction | `DATEPART`, `DATETRUNC`, `TRUNC_TIME`, `DAY`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, `SECOND`, `QUARTER`, `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`, `WEEKDAY`, `WEEKOFYEAR` |
+| Date conversion | `TO_DATE`, `DATE_FORMAT`, `TO_CHAR`, `FROM_UNIXTIME`, `FROM_UTC_TIMESTAMP`, `TO_MILLIS`, `ISDATE` |
+| Current date/time | `GETDATE`, `NOW`, `CURRENT_TIMESTAMP`, `CURRENT_TIMEZONE` |
 | Last/next day | `LAST_DAY`, `LASTDAY`, `NEXT_DAY` |
-| String | `TOLOWER`, `TOUPPER`, `REGEXP_COUNT`, `SPLIT_PART` |
-| Aggregate | `WM_CONCAT`, `COUNT_IF`, `ARG_MAX`, `ARG_MIN`, `ANY_VALUE`, `APPROX_DISTINCT`, `STDDEV_SAMP`, `COVAR_POP`, `COVAR_SAMP`, `CORR`, `MEDIAN`, `PERCENTILE_APPROX`, `BITWISE_AND_AGG`, `BITWISE_OR_AGG`, `BITWISE_XOR_AGG` |
-| Array | `ALL_MATCH`, `ANY_MATCH`, `ARRAY_SORT`, `ARRAY_DISTINCT`, `ARRAY_EXCEPT`, `ARRAY_JOIN`, `ARRAY_MAX`, `ARRAY_MIN`, `ARRAYS_OVERLAP`, `ARRAYS_ZIP`, `ARRAY_INTERSECT`, `ARRAY_POSITION`, `ARRAY_REMOVE`, `ARRAY_CONTAINS` |
+| String | `TOLOWER`, `TOUPPER`, `REGEXP_COUNT`, `SPLIT_PART`, `SUBSTR` |
+| Aggregate | `WM_CONCAT`, `COUNT_IF`, `ARG_MAX`, `ARG_MIN`, `MAX_BY`, `MIN_BY`, `ANY_VALUE`, `APPROX_DISTINCT`, `STDDEV_SAMP`, `COVAR_POP`, `COVAR_SAMP`, `CORR`, `MEDIAN`, `PERCENTILE_APPROX`, `BITWISE_AND_AGG`, `BITWISE_OR_AGG`, `BITWISE_XOR_AGG` |
+| Array | `ALL_MATCH`, `ANY_MATCH`, `ARRAY_SORT`, `ARRAY_DISTINCT`, `ARRAY_EXCEPT`, `ARRAY_JOIN`, `ARRAY_MAX`, `ARRAY_MIN`, `ARRAYS_OVERLAP`, `ARRAYS_ZIP`, `ARRAY_INTERSECT`, `ARRAY_POSITION`, `ARRAY_REMOVE`, `ARRAY_CONTAINS`, `SLICE` |
 | Map | `MAP_CONCAT`, `MAP_FROM_ENTRIES` |
-| JSON / misc | `FROM_JSON`, `GET_USER_ID`, `REGEXP_SUBSTR`, `SLICE`, `TO_MILLIS`, `ISDATE` |
+| JSON / misc | `FROM_JSON`, `GET_JSON_OBJECT`, `JSON_TUPLE`, `GET_USER_ID`, `REGEXP_SUBSTR`, `TO_MILLIS`, `ISDATE` |
 
-### Generator (canonical AST → MaxCompute SQL)
+Functions not listed are handled via Hive inheritance and work without explicit mapping (e.g. `SPLIT`, `REGEXP_EXTRACT`, `COLLECT_LIST`, `PERCENTILE`, all math/trig functions, window functions).
 
-- Date/time: `DATEADD`, `DATEDIFF`, `DATETRUNC`, `DATEPART`, `GETDATE()`, `NOW()`
-- String: `TOLOWER`, `TOUPPER`
-- Aggregate: `WM_CONCAT`, `ARG_MAX`, `ARG_MIN`, `APPROX_DISTINCT`
-- JSON/misc: `FROM_JSON`, `GET_USER_ID()`, `TO_MILLIS`, `TO_CHAR`
-- Type mapping: `VARCHAR`/`CHAR`/`TEXT` → `STRING`, `DATETIME` preserved
+### Generator — canonical AST → MaxCompute SQL
+
+Explicit transforms on top of Hive:
+
+| Expression | MaxCompute output | Note |
+|---|---|---|
+| `DATEADD` / `DATE_SUB` | `DATEADD(dt, ±n, 'UNIT')` | Correct negation for `DATE_SUB` |
+| `DATEDIFF` | `DATEDIFF(dt1, dt2[, unit])` | |
+| `DATETRUNC` | `DATETRUNC(dt, 'unit')` | Week units: `'week(monday)'` etc. |
+| `DATEPART` | `DATEPART(dt, 'UNIT')` | |
+| `TO_DATE(str, fmt)` | `TO_DATE(str, fmt)` | Maps to `exp.StrToTime` (DATETIME) |
+| `TO_DATE(str)` | `TO_DATE(str)` | Maps to `exp.TsOrDsToDate` (DATE) |
+| `CurrentTimestamp` | `GETDATE()` | Covers `GETDATE`, `NOW`, `CURRENT_TIMESTAMP` |
+| `CurrentDatetime` | `NOW()` | For BigQuery-origin `CURRENT_DATETIME` |
+| `SPACE(n)` | `SPACE(n)` | Hive emits `REPEAT(' ', n)` |
+| `VAR_POP(x)` | `VAR_POP(x)` | Hive emits `VARIANCE_POP` |
+| `VAR_SAMP(x)` | `VAR_SAMP(x)` | Hive emits `VARIANCE` |
+| `INSTR(str, sub)` | `INSTR(str, sub)` | Hive emits `LOCATE(sub, str)` |
+| `SUBSTR(str, pos, len)` | `SUBSTR(...)` | Hive emits `SUBSTRING` |
+| Type: `VARCHAR`/`CHAR`/`TEXT` | `STRING` | |
+| Type: `DATETIME` | `DATETIME` | |
 
 ### DDL
 
 - `LIFECYCLE n` — table retention in days
 - `RANGE CLUSTERED BY (cols) [SORTED BY (cols)] INTO n BUCKETS`
 - `AUTO PARTITIONED BY (TRUNC_TIME(col, 'unit') [AS alias])`
-- `TBLPROPERTIES ('key'='value')` coexists correctly with `LIFECYCLE`
+- `TBLPROPERTIES ('key'='value')` — coexists correctly with `LIFECYCLE`
+- `COMMENT` on columns and tables
 
 ## Development
 
 ```bash
-# Install dependencies
-uv sync
-
-# Run tests
-uv run pytest
-
-# Run a single test
-uv run pytest tests/test_maxcompute.py::TestMaxCompute::test_dateadd_roundtrip
+uv sync            # install dependencies
+uv run pytest      # run all tests
 ```
 
 ## License
