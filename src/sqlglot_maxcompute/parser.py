@@ -4,7 +4,7 @@ import re
 import typing as t
 
 from sqlglot import exp
-from sqlglot.dialects.hive import Hive
+from sqlglot.parsers.hive import HiveParser
 from sqlglot.dialects.dialect import build_timetostr_or_tochar
 from sqlglot.helper import seq_get
 from sqlglot.tokens import TokenType
@@ -61,9 +61,9 @@ def _build_datetrunc(
     return exp.DateTrunc(unit=unit, this=this)
 
 
-class MaxComputeParser(Hive.Parser):
+class MaxComputeParser(HiveParser):
     FUNCTIONS = {
-        **Hive.Parser.FUNCTIONS,
+        **HiveParser.FUNCTIONS,
         # Hive overrides: MaxCompute accepts date/datetime/timestamp/string directly
         # without needing TsOrDsToDate wrapping
         "DAY": exp.Day.from_arg_list,
@@ -86,7 +86,9 @@ class MaxComputeParser(Hive.Parser):
         # Hive override: produce exp.DateSub so _dateadd_sql emits DATEADD(date, -n, unit)
         # cleanly. Hive maps DATE_SUB to TsOrDsAdd(expression=Mul(n, -1)) which generates
         # "3 * -1" in the output.
-        "DATE_SUB": lambda args: exp.DateSub(this=seq_get(args, 0), expression=seq_get(args, 1)),
+        "DATE_SUB": lambda args: exp.DateSub(
+            this=seq_get(args, 0), expression=seq_get(args, 1)
+        ),
         # Date arithmetic
         "DATEADD": _build_dateadd,
         "DATEDIFF": lambda args: exp.DateDiff(
@@ -104,6 +106,13 @@ class MaxComputeParser(Hive.Parser):
         ),
         "DATETRUNC": _build_datetrunc,
         "TRUNC_TIME": _build_datetrunc,
+        # TRUNC(n, d)    → exp.Trunc  (numeric truncation)
+        # TRUNC(dt, 'u') → _build_datetrunc (date truncation, same as TRUNC_TIME)
+        "TRUNC": lambda args: (
+            _build_datetrunc(args)
+            if seq_get(args, 1) is not None and seq_get(args, 1).is_string
+            else exp.Trunc(this=seq_get(args, 0), decimals=seq_get(args, 1))
+        ),
         "DAYOFMONTH": exp.DayOfMonth.from_arg_list,
         "DAYOFWEEK": exp.DayOfWeek.from_arg_list,
         "DAYOFYEAR": exp.DayOfYear.from_arg_list,
@@ -111,7 +120,10 @@ class MaxComputeParser(Hive.Parser):
         "MINUTE": exp.Minute.from_arg_list,
         "SECOND": exp.Second.from_arg_list,
         "QUARTER": exp.Quarter.from_arg_list,
-        "WEEKDAY": lambda args: exp.paren(exp.DayOfWeek(this=seq_get(args, 0)) + 5, copy=False) % 7,
+        "WEEKDAY": lambda args: exp.paren(
+            exp.DayOfWeek(this=seq_get(args, 0)) + 5, copy=False
+        )
+        % 7,
         "WEEKOFYEAR": exp.WeekOfYear.from_arg_list,
         # Last/next day
         "LAST_DAY": exp.LastDay.from_arg_list,
@@ -134,7 +146,9 @@ class MaxComputeParser(Hive.Parser):
         ),
         "ISDATE": lambda args: exp.not_(
             exp.Is(
-                this=exp.TsOrDsToDate(this=seq_get(args, 0), format=seq_get(args, 1), safe=True),
+                this=exp.TsOrDsToDate(
+                    this=seq_get(args, 0), format=seq_get(args, 1), safe=True
+                ),
                 expression=exp.Null(),
             )
         ),
@@ -191,7 +205,7 @@ class MaxComputeParser(Hive.Parser):
     }
 
     PROPERTY_PARSERS = {
-        **Hive.Parser.PROPERTY_PARSERS,
+        **HiveParser.PROPERTY_PARSERS,
         # LIFECYCLE n — MaxCompute table retention in days. Stored as a generic
         # exp.Property with a Var key so no custom expression class is needed and
         # sqlglot's PROPERTIES_LOCATION contract is not broken.
@@ -202,7 +216,9 @@ class MaxComputeParser(Hive.Parser):
         "AUTO": lambda self: self._parse_auto_partition(),
     }
 
-    def _parse_auto_partition(self) -> exp.PartitionedByProperty | exp.AutoRefreshProperty | None:
+    def _parse_auto_partition(
+        self,
+    ) -> exp.PartitionedByProperty | exp.AutoRefreshProperty | None:
         if self._match(TokenType.PARTITION_BY):
             self._match(TokenType.L_PAREN)
             expr = self._parse_conjunction()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing as t
 
 from sqlglot import exp
-from sqlglot.dialects.hive import Hive
+from sqlglot.generators.hive import HiveGenerator
 from sqlglot.dialects.dialect import rename_func, unit_to_str
 from sqlglot.transforms import (
     move_schema_columns_to_partitioned_by,
@@ -13,7 +13,12 @@ from sqlglot.transforms import (
 )
 
 
-_AUTO_PARTITION_TYPES = (exp.DateTrunc, exp.TimestampTrunc, exp.DatetimeTrunc, exp.Alias)
+_AUTO_PARTITION_TYPES = (
+    exp.DateTrunc,
+    exp.TimestampTrunc,
+    exp.DatetimeTrunc,
+    exp.Alias,
+)
 
 
 def _move_schema_columns_to_partitioned_by(expression: exp.Expr) -> exp.Expr:
@@ -25,9 +30,9 @@ def _move_schema_columns_to_partitioned_by(expression: exp.Expr) -> exp.Expr:
     return move_schema_columns_to_partitioned_by(expression)
 
 
-class MaxComputeGenerator(Hive.Generator):
+class MaxComputeGenerator(HiveGenerator):
     TYPE_MAPPING = {
-        **Hive.Generator.TYPE_MAPPING,
+        **HiveGenerator.TYPE_MAPPING,
         exp.DType.DATETIME: "DATETIME",
         exp.DType.VARCHAR: "STRING",
         exp.DType.CHAR: "STRING",
@@ -35,7 +40,7 @@ class MaxComputeGenerator(Hive.Generator):
     }
 
     TRANSFORMS = {
-        **Hive.Generator.TRANSFORMS,
+        **HiveGenerator.TRANSFORMS,
         exp.Create: preprocess(
             [
                 remove_unique_constraints,
@@ -67,19 +72,33 @@ class MaxComputeGenerator(Hive.Generator):
         exp.ApproxDistinct: rename_func("APPROX_DISTINCT"),
         exp.ArgMax: lambda self, e: self.func("ARG_MAX", e.this, e.expression),
         exp.ArgMin: lambda self, e: self.func("ARG_MIN", e.this, e.expression),
+        exp.LogicalAnd: rename_func("BOOL_AND"),
+        exp.LogicalOr: rename_func("BOOL_OR"),
         # Statistical aggregate fixes (Hive emits wrong names)
         exp.Space: rename_func("SPACE"),
         exp.VariancePop: rename_func("VAR_POP"),
         exp.Variance: rename_func("VAR_SAMP"),
+        # Numeric truncation: TRUNC(n, d)
+        exp.Trunc: lambda self, e: self.func("TRUNC", e.this, e.args.get("decimals")),
         # String position: MaxCompute uses INSTR(str, substr), not LOCATE(substr, str)
-        exp.StrPosition: lambda self, e: self.func("INSTR", e.this, e.args.get("substr")),
+        exp.StrPosition: lambda self, e: self.func(
+            "INSTR", e.this, e.args.get("substr"), e.args.get("position")
+        ),
         # TO_DATE(str, fmt) returns DATETIME — modeled as StrToTime; emit TO_DATE in MaxCompute
-        exp.StrToTime: lambda self, e: self.func("TO_DATE", e.this, e.args.get("format")),
+        exp.StrToTime: lambda self, e: self.func(
+            "TO_DATE", e.this, e.args.get("format")
+        ),
     }
 
     def _dateadd_sql(
         self,
-        expression: exp.TsOrDsAdd | exp.DateAdd | exp.DateSub | exp.TimestampAdd | exp.DatetimeAdd,
+        expression: (
+            exp.TsOrDsAdd
+            | exp.DateAdd
+            | exp.DateSub
+            | exp.TimestampAdd
+            | exp.DatetimeAdd
+        ),
     ) -> str:
         unit = unit_to_str(expression) if expression.args.get("unit") else "'DAY'"
         delta = expression.expression
@@ -118,18 +137,26 @@ class MaxComputeGenerator(Hive.Generator):
         return self.func("TO_CHAR", expression.this, expression.args.get("format"))
 
     def substring_sql(self, expression: exp.Substring) -> str:
-        return self.func("SUBSTR", expression.this, expression.args.get("start"), expression.args.get("length"))
+        return self.func(
+            "SUBSTR",
+            expression.this,
+            expression.args.get("start"),
+            expression.args.get("length"),
+        )
 
     def extract_sql(self, expression: exp.Extract) -> str:
         unit = expression.this
-        return self.func("DATEPART", expression.expression, exp.Literal.string(unit.name))
+        return self.func(
+            "DATEPART", expression.expression, exp.Literal.string(unit.name)
+        )
 
     def mod_sql(self, expression: exp.Mod) -> str:
         # Reverse the WEEKDAY parser transform: (DAYOFWEEK(x) + 5) % 7 → WEEKDAY(x)
         rhs = expression.expression
         lhs = expression.this
         if (
-            isinstance(rhs, exp.Literal) and rhs.this == "7"
+            isinstance(rhs, exp.Literal)
+            and rhs.this == "7"
             and isinstance(lhs, exp.Paren)
             and isinstance(lhs.this, exp.Add)
             and isinstance(lhs.this.this, exp.DayOfWeek)
@@ -148,7 +175,9 @@ class MaxComputeGenerator(Hive.Generator):
                 inner = inner.this
             unit = inner.args.get("unit")
             unit_str = unit.name.lower() if unit else ""
-            trunc_sql = self.func("TRUNC_TIME", inner.this, exp.Literal.string(unit_str))
+            trunc_sql = self.func(
+                "TRUNC_TIME", inner.this, exp.Literal.string(unit_str)
+            )
             return f"AUTO PARTITIONED BY ({trunc_sql}{alias_sql})"
         return f"PARTITIONED BY {self.sql(expression, 'this')}"
 
@@ -159,7 +188,9 @@ class MaxComputeGenerator(Hive.Generator):
     def datatype_sql(self, expression: exp.DataType) -> str:
         # VARCHAR and CHAR map to STRING in MaxCompute, with no length parameters
         if expression.this in (exp.DType.VARCHAR, exp.DType.CHAR):
-            return self.TYPE_MAPPING.get(expression.this, super().datatype_sql(expression))
+            return self.TYPE_MAPPING.get(
+                expression.this, super().datatype_sql(expression)
+            )
         return super().datatype_sql(expression)
 
     def properties_sql(self, expression: exp.Properties) -> str:

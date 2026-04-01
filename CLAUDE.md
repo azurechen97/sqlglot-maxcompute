@@ -28,26 +28,26 @@ uv run pytest tests/test_foo.py::test_bar
 
 The dialect is split across three files in `src/sqlglot_maxcompute/`:
 
-- **`parser.py`** — `MaxComputeParser(Hive.Parser)`: `FUNCTIONS` dict mapping MaxCompute function names to canonical `sqlglot.exp` nodes; `PROPERTY_PARSERS` for `LIFECYCLE`, `RANGE`, and `AUTO`; helper builders `_build_dateadd`, `_build_datetrunc`.
-- **`generator.py`** — `MaxComputeGenerator(Hive.Generator)`: `TYPE_MAPPING`, `TRANSFORMS`, and named `_sql` methods that map canonical AST nodes back to MaxCompute SQL.
-- **`maxcompute.py`** — `MaxCompute(Hive)`: slim coordinator that sets `TIME_MAPPING`/`DATE_FORMAT`/`TIME_FORMAT`, adds `Tokenizer` keywords (`EXPORT`, `LIFECYCLE`, `OPTION`), and wires `Parser = MaxComputeParser` / `Generator = MaxComputeGenerator`.
+- **`parser.py`** — `MaxComputeParser(HiveParser)`: `FUNCTIONS` dict mapping MaxCompute function names to canonical `sqlglot.exp` nodes; `PROPERTY_PARSERS` for `LIFECYCLE`, `RANGE`, and `AUTO`; helper builders `_build_dateadd`, `_build_datetrunc`.
+- **`generator.py`** — `MaxComputeGenerator(HiveGenerator)`: `TYPE_MAPPING`, `TRANSFORMS`, and named `_sql` methods that map canonical AST nodes back to MaxCompute SQL.
+- **`dialect.py`** — `MaxCompute(Hive)`: slim coordinator that sets `TIME_MAPPING`/`DATE_FORMAT`/`TIME_FORMAT`, adds `Tokenizer` keywords (`EXPORT`, `LIFECYCLE`, `OPTION`), and wires `Parser = MaxComputeParser` / `Generator = MaxComputeGenerator`.
 
 The dialect is registered as a plugin in `pyproject.toml` under `[project.entry-points."sqlglot.dialects"]`, so after installation it is automatically discoverable by sqlglot as `"maxcompute"`.
 
-This split mirrors sqlglot's own mypyc-compile refactor (parsers/generators split by file) and is required for compatibility with sqlglot ≥ 31 compiled wheels.
+This split mirrors sqlglot's own mypyc-compile refactor (parsers/generators split into `sqlglot.parsers.*` / `sqlglot.generators.*` modules) and requires sqlglot ≥ 30.1.0.
 
 `local/` contains development scratch files and references — **not part of the package**:
 - `scratch.py` — keyword comparison scratch script
-- `sqlglot/` — full clone of the sqlglot repo for reference (expressions, dialects, generator internals); `sqlglot/posts/` contains official guides (`onboarding.md` for architecture deep-dive, `ast_primer.md` for AST tutorial). Note: local clone is newer than installed (30.0.1) — dialect parsers moved to `parsers/`, expressions split into `expressions/` package
+- `sqlglot/` — full clone of the sqlglot repo for reference (expressions, dialects, generator internals); `sqlglot/posts/` contains official guides (`onboarding.md` for architecture deep-dive, `ast_primer.md` for AST tutorial). Parsers live in `parsers/`, generators in `generators/`, expressions in `expressions/` package
 - `ydb-sqlglot-plugin/` — YDB dialect plugin, used as reference for how a well-behaved plugin is structured
 - `maxcompute_doc/` — MaxCompute official function documentation (e.g., `date_func.md`, `func_comparison.md`)
 
 ## Implementation Status
 
-The dialect is complete at v0.3.1:
+The dialect is complete at v0.4.0:
 - **Parser**: ~65 functions explicitly mapped (date/time, string, aggregate, array, map); remainder inherited from Hive.
 - **Generator**: `TRANSFORMS` + named `_sql` methods for all major expression types; Hive handles the rest.
-- **Tests**: 39 test methods, 180+ subtests covering parse, round-trip, and cross-dialect transpilation.
+- **Tests**: 40 test methods, 186 subtests covering parse, round-trip, and cross-dialect transpilation.
 
 ## Key sqlglot patterns
 
@@ -60,6 +60,14 @@ When adding generator transforms in `Generator.TRANSFORMS`, use `self.func(name,
 Tests use a `Validator` base class (inline in `tests/test_maxcompute.py`) mirroring sqlglot's pattern:
 - `validate_all(sql, write={dialect: expected})` — cross-dialect transpilation assertions
 - `assertIsInstance(parse_one(sql, read="maxcompute"), exp.SomeClass)` — parse node assertions
+- **`read=` must be a dict** — `read={"spark": "LOCATE(...)"}`, not `read="spark"`. Bare string is silently ignored by `validate_all`.
+- **Pyright false positive** — `assertIsNotNone(x)` does not narrow types in Pyright; `x.field` after it shows "attribute of None" errors that are noise, not real bugs.
+
+**Development is test-driven (TDD).** For every fix or feature:
+1. Write the failing test first and run it to confirm it fails
+2. Implement the minimal change to make it pass
+3. Run the full suite to confirm no regressions
+4. Commit
 
 Before writing `validate_all` assertions, probe actual output first:
 ```bash

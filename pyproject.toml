@@ -1,6 +1,6 @@
 [project]
 name = "sqlglot-maxcompute"
-version = "0.3.1"
+version = "0.4.0"
 description = "MaxCompute dialect plugin for SQLGlot"
 readme = "README.md"
 license = { text = "MIT" }
@@ -9,7 +9,7 @@ authors = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "sqlglot>=29.0.0,<31",
+    "sqlglot>=30.1.0,<31",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -38,4 +38,4 @@ dev = [
 testpaths = ["tests"]
 
 [project.entry-points."sqlglot.dialects"]
-maxcompute = "sqlglot_maxcompute.maxcompute:MaxCompute"
+maxcompute = "sqlglot_maxcompute.dialect:MaxCompute"

@@ -10,7 +10,7 @@ Registers the `maxcompute` dialect via Python entry points so that SQLGlot can p
 pip install sqlglot-maxcompute
 ```
 
-Requires Python ≥ 3.9 and SQLGlot ≥ 29.
+Requires Python ≥ 3.9 and SQLGlot ≥ 30.1.
 
 ## Usage
 

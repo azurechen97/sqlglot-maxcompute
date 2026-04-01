@@ -229,6 +229,51 @@ class TestMaxCompute(Validator):
             },
         )
 
+    def test_032_fixes(self):
+        # Bug 1: TRUNC(n, d) — numeric truncation, not date truncation
+        expr = self.parse_one("TRUNC(3.14, 2)")
+        self.assertIsInstance(expr, exp.Trunc)
+        self.validate_all(
+            "TRUNC(3.14, 2)",
+            write={
+                "maxcompute": "TRUNC(3.14, 2)",
+            },
+        )
+        # TRUNC with a string unit still routes to DATETRUNC
+        expr2 = self.parse_one("TRUNC(dt, 'MONTH')")
+        self.assertIsInstance(expr2, exp.DateTrunc)
+
+        # Bug 2: BOOL_AND / BOOL_OR — aggregate, not infix AND/OR
+        self.validate_all(
+            "SELECT BOOL_AND(flag) FROM t",
+            write={
+                "maxcompute": "SELECT BOOL_AND(flag) FROM t",
+            },
+        )
+        self.validate_all(
+            "SELECT BOOL_OR(flag) FROM t",
+            write={
+                "maxcompute": "SELECT BOOL_OR(flag) FROM t",
+            },
+        )
+
+        # Bug 3: LOCATE(sub, str, start) — start position must pass through to INSTR
+        self.validate_all(
+            "LOCATE('bc', 'abcd', 2)",
+            read={"spark": "LOCATE('bc', 'abcd', 2)"},
+            write={
+                "maxcompute": "INSTR('abcd', 'bc', 2)",
+            },
+        )
+        # Without start position, INSTR(str, sub) is unchanged
+        self.validate_all(
+            "LOCATE('bc', 'abcd')",
+            read={"spark": "LOCATE('bc', 'abcd')"},
+            write={
+                "maxcompute": "INSTR('abcd', 'bc')",
+            },
+        )
+
     # -------------------------------------------------------------------------
     # Date/time conversion
     # -------------------------------------------------------------------------
