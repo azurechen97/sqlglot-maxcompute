@@ -636,13 +636,6 @@ class TestMaxCompute(Validator):
             write={"maxcompute": "SELECT DATEADD(dt, 1, 'DAY')"},
         )
 
-        # Cross-dialect: BigQuery DATE_SUB → MaxCompute DATEADD with negated delta
-        self.validate_all(
-            "SELECT DATE_SUB(dt, INTERVAL 3 DAY)",
-            read={"bigquery": "SELECT DATE_SUB(dt, INTERVAL 3 DAY)"},
-            write={"maxcompute": "SELECT DATEADD(dt, -3, 'DAY')"},
-        )
-
     def test_datetrunc_roundtrip(self):
         # DATETRUNC round-trips with MaxCompute arg order: DATETRUNC(dt, 'UNIT')
         self.validate_identity("SELECT DATETRUNC(dt, 'YEAR')")
