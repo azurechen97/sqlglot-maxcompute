@@ -4,6 +4,8 @@ A [SQLGlot](https://github.com/tobymao/sqlglot) dialect plugin for [Alibaba Clou
 
 Registers the `maxcompute` dialect via Python entry points so that SQLGlot can parse and generate MaxCompute SQL.
 
+> **Disclaimer:** Unofficial community plugin — not affiliated with or endorsed by Alibaba Cloud.
+
 ## Installation
 
 ```bash
